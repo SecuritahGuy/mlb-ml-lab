@@ -24,6 +24,8 @@ from mlb_ml_lab.features import (
     save_feature_data,
 )
 
+from mlb_ml_lab.models.train import load_model, save_model, train_final
+
 __all__ = [
     "BoxscorePlayer",
     "DiskCache",
@@ -41,6 +43,9 @@ __all__ = [
     "build_feature_matrix",
     "describe_features",
     "load_feature_data",
+    "load_model",
     "make_targets",
     "save_feature_data",
+    "save_model",
+    "train_final",
 ]

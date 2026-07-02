@@ -117,6 +117,56 @@ class MlbClient:
             games.extend(date_entry.get("games", []))
         return games
 
+    def get_enriched_schedule(
+        self, season: int, sport_id: int = 1, game_type: str = "R"
+    ) -> dict[int, dict[str, Any]]:
+        """Fetch schedule for a season with venue and probable pitcher
+        hydrations, returned as a ``game_pk → context`` lookup dict.
+
+        This replaces thousands of individual ``get_game_context()``
+        calls with a single API request.
+        """
+        data = self._get(
+            "/schedule",
+            params={
+                "sportId": sport_id,
+                "season": season,
+                "gameType": game_type,
+                "hydrate": "probablePitcher,venue",
+            },
+        )
+
+        lookup: dict[int, dict[str, Any]] = {}
+        for date_entry in data.get("dates", []):
+            for game in date_entry.get("games", []):
+                pk = game.get("gamePk")
+                if pk is None:
+                    continue
+                teams_data = game.get("teams", {}) or {}
+                dt = game.get("datetime", {}) or {}
+                home_team = (teams_data.get("home", {}) or {})
+                away_team = (teams_data.get("away", {}) or {})
+                lookup[pk] = {
+                    "game_pk": pk,
+                    "game_datetime": game.get("gameDate"),
+                    "day_night": game.get("dayNight") or dt.get("dayNight"),
+                    "venue_id": (game.get("venue") or {}).get("id"),
+                    "venue_name": (game.get("venue") or {}).get("name"),
+                    "home_team_id": (
+                        (home_team.get("team", {}) or {}).get("id")
+                    ),
+                    "away_team_id": (
+                        (away_team.get("team", {}) or {}).get("id")
+                    ),
+                    "home_probable_pitcher_id": (
+                        (home_team.get("probablePitcher", {}) or {}).get("id")
+                    ),
+                    "away_probable_pitcher_id": (
+                        (away_team.get("probablePitcher", {}) or {}).get("id")
+                    ),
+                }
+        return lookup
+
     # ------------------------------------------------------------------
     # Game Context (weather, venue, score)
     # ------------------------------------------------------------------
@@ -537,6 +587,145 @@ class MlbClient:
             "reliever_count": n,
             "reliever_ip": round(total_ip, 1),
         }
+
+    # ------------------------------------------------------------------
+    # People Search
+    # ------------------------------------------------------------------
+
+    def search_people(
+        self, names: str | list[str], sport_id: int = 1
+    ) -> list[dict[str, Any]]:
+        """Search for players by name.
+
+        Args:
+            names: Single name string or list of names (comma-joined).
+            sport_id: Top-level sport organisation (MLB = 1).
+
+        Returns:
+            List of matching person dicts.
+        """
+        if isinstance(names, list):
+            names = ",".join(str(n) for n in names)
+        data = self._get(
+            "/people/search",
+            params={"names": names, "sportId": sport_id},
+        )
+        return data.get("people", [])
+
+    # ------------------------------------------------------------------
+    # Team Leaders
+    # ------------------------------------------------------------------
+
+    def get_team_leaders(
+        self,
+        team_id: int,
+        season: int,
+        leader_categories: list[str] | None = None,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Fetch statistical leaders for a team.
+
+        Args:
+            team_id: Unique team identifier.
+            season: Season year.
+            leader_categories: e.g. ``["homeRuns", "battingAverage",
+                "runsBattedIn"]``. Defaults to batting average.
+            limit: Number of leaders per category.
+
+        Returns:
+            List of leader entries, each with ``leader`` (person dict),
+            ``value``, ``rank``.
+        """
+        if leader_categories is None:
+            leader_categories = ["battingAverage"]
+        data = self._get(
+            f"/teams/{team_id}/leaders",
+            params={
+                "leaderCategories": ",".join(leader_categories),
+                "season": season,
+                "limit": limit,
+            },
+        )
+        return data.get("teamLeaders", [])
+
+    # ------------------------------------------------------------------
+    # Game Pace
+    # ------------------------------------------------------------------
+
+    def get_game_pace(
+        self, season: int, team_id: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch pace-of-game statistics.
+
+        Args:
+            season: Season year.
+            team_id: If provided, filters to one team.
+
+        Returns:
+            List of pace records with keys ``team``, ``totalGames``,
+            ``timePerGame``, ``timePerGameExtraInnings``,
+            ``averagePitchesPerGame``.
+        """
+        params: dict[str, Any] = {"season": season}
+        if team_id is not None:
+            params["teamId"] = team_id
+        data = self._get("/gamePace", params=params)
+        return data.get("gamePace", [])
+
+    # ------------------------------------------------------------------
+    # Context Metrics (leverage index, etc.)
+    # ------------------------------------------------------------------
+
+    def get_context_metrics(self, game_pk: int) -> dict[str, Any]:
+        """Fetch context metrics (leverage index, home-win probability,
+        etc.) for a game.
+
+        This is a live/game-time endpoint — not useful for pre-game
+        prediction, but helpful for post-game analysis.
+
+        Args:
+            game_pk: Unique game identifier.
+
+        Returns:
+            Dict with keys like ``leverageIndex``, ``homeWinProbability``,
+            ``runnerOnBaseLeverage``, etc.
+        """
+        return self._get(f"/game/{game_pk}/contextMetrics")
+
+    # ------------------------------------------------------------------
+    # Player Streaks
+    # ------------------------------------------------------------------
+
+    def get_stats_streaks(
+        self,
+        season: int,
+        streak_type: str = "hitting",
+        sport_id: int = 1,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Fetch player streaks (hitting, on-base, playing).
+
+        Args:
+            season: Season year.
+            streak_type: ``"hitting"``, ``"onBase"``, or ``"playing"``.
+            sport_id: Top-level sport organisation (MLB = 1).
+            limit: Max results to return.
+
+        Returns:
+            List of streak entries, each with ``player`` (person dict),
+            ``numStreak`` (int), ``streakType``, ``streakSpan``,
+            ``streakStats``, ``currentStreak``.
+        """
+        data = self._get(
+            "/stats/streaks",
+            params={
+                "season": season,
+                "streakType": streak_type,
+                "sportId": sport_id,
+                "limit": limit,
+            },
+        )
+        return data.get("streaks", [])
 
     # ------------------------------------------------------------------
     # Internal

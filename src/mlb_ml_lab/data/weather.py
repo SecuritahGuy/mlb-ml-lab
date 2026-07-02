@@ -172,7 +172,7 @@ class NwsWeather:
 
         coords = VENUE_COORDS.get(venue_id)
         if not coords:
-            logger.warning("No coordinates for venue %d", venue_id)
+            logger.debug("No coordinates for venue %d", venue_id)
             return {}
 
         lat, lon = coords

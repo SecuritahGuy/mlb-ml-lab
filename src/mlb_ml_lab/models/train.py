@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import os
 import warnings
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
+import joblib
 import numpy as np
 from lightgbm import LGBMClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -321,3 +324,134 @@ def train_baselines(
         }
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Model persistence
+# ---------------------------------------------------------------------------
+
+
+def save_model(
+    model: Any,
+    feature_cols: list[str],
+    imputer: SimpleImputer,
+    directory: str,
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    """Save a trained model + its preprocessors to disk.
+
+    Creates *directory* (if needed) and writes::
+
+        {directory}/
+            model.joblib          — fitted classifier
+            feature_cols.joblib   — list of feature column names
+            imputer.joblib        — fitted ``SimpleImputer``
+            metadata.json         — training metadata
+
+    Args:
+        model: Fitted sklearn-compatible classifier.
+        feature_cols: Feature column names in the order expected by
+                      *model*.
+        imputer: Fitted ``SimpleImputer`` used during training.
+        directory: Output directory.
+        metadata: Optional extra metadata (e.g. ``target_col``,
+                  ``feature_count``).
+
+    Returns:
+        The *directory* path.
+    """
+    os.makedirs(directory, exist_ok=True)
+    joblib.dump(model, os.path.join(directory, "model.joblib"))
+    joblib.dump(feature_cols, os.path.join(directory, "feature_cols.joblib"))
+    joblib.dump(imputer, os.path.join(directory, "imputer.joblib"))
+    if metadata:
+        meta_path = os.path.join(directory, "metadata.json")
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
+    return directory
+
+
+def load_model(
+    directory: str,
+) -> tuple[Any, list[str], SimpleImputer, dict[str, Any]]:
+    """Load a model saved by ``save_model()``.
+
+    Returns:
+        ``(model, feature_cols, imputer, metadata)`` tuple.
+    """
+    model = joblib.load(os.path.join(directory, "model.joblib"))
+    feature_cols: list[str] = joblib.load(
+        os.path.join(directory, "feature_cols.joblib")
+    )
+    imputer: SimpleImputer = joblib.load(
+        os.path.join(directory, "imputer.joblib")
+    )
+    metadata: dict[str, Any] = {}
+    meta_path = os.path.join(directory, "metadata.json")
+    if os.path.isfile(meta_path):
+        with open(meta_path, encoding="utf-8") as f:
+            metadata = json.load(f)
+    return model, feature_cols, imputer, metadata
+
+
+# ---------------------------------------------------------------------------
+# Train final model on all available data (no validation split)
+# ---------------------------------------------------------------------------
+
+
+def train_final(
+    feature_matrix: list[dict[str, Any]],
+    targets: list[dict[str, Any]],
+    target_col: str = "target_0.5",
+    model_type: str = "lgb",
+    seed: int = 42,
+) -> dict[str, Any]:
+    """Train a single model on ALL data and return it with preprocessors.
+
+    This is the function to call *after* walk-forward validation.  It
+    uses the same preprocessing pipeline as ``train_baselines`` but
+    fits on every row (no folds).
+
+    Returns a dict suitable for ``save_model()``::
+
+        {
+            "model": <fitted classifier>,
+            "feature_cols": [...],
+            "imputer": <fitted SimpleImputer>,
+            "metadata": {"target_col": ..., "model_type": ...},
+        }
+    """
+    merged = _merge_features_targets(feature_matrix, targets)
+    if not merged:
+        return {"model": None, "feature_cols": [], "imputer": None,
+                "metadata": {"error": "no merged rows"}}
+    merged.sort(key=lambda r: r["date"])
+
+    feat_cols = _feature_columns(merged)
+    x = np.array(
+        [[row[c] for c in feat_cols] for row in merged], dtype=np.float64
+    )
+    y = np.array([row[target_col] for row in merged], dtype=np.int32)
+
+    imputer = SimpleImputer(strategy="median")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=UserWarning)
+        x = imputer.fit_transform(x)
+    x = np.nan_to_num(x, nan=0.0)
+
+    model = _build_model(model_type, seed)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=UserWarning)
+        model.fit(x, y)
+
+    return {
+        "model": model,
+        "feature_cols": feat_cols,
+        "imputer": imputer,
+        "metadata": {
+            "target_col": target_col,
+            "model_type": model_type,
+            "n_rows": len(merged),
+            "n_features": len(feat_cols),
+        },
+    }

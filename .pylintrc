@@ -11,12 +11,14 @@ disable=
     duplicate-code,
     R0902,   # too-many-instance-attributes (dataclasses with lots of fields)
     R0913,   # too-many-arguments
+    R0912,   # too-many-branches (orchestration scripts are naturally branched)
     R0914,   # too-many-locals
     R0915,   # too-many-statements (orchestration main() is long)
     R0917,   # too-many-positional-arguments
     R0903,   # too-few-public-methods (internal helper classes are fine)
     W0221,   # arguments-differ (extract(**kwargs) pattern is intentional)
     R0801,   # duplicate-code (alias for duplicate-code)
+    R0904,   # too-many-public-methods (MlbClient is intentionally a broad facade)
 
 [FORMAT]
 max-line-length=100
