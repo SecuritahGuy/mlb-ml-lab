@@ -11,7 +11,7 @@ from typing import Any
 
 from mibl.data.schemas import PlayerGameLog
 
-from pipeline.base import FeatureExtractor, FeatureMeta, register
+from mibl.features.base import FeatureExtractor, FeatureMeta, register
 
 
 @register
@@ -42,7 +42,6 @@ class RollingHits(FeatureExtractor):
         return cols
 
     def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
-        # Group logs by player, sorted by date ascending
         by_player: dict[int, list[PlayerGameLog]] = defaultdict(list)
         for log in game_logs:
             by_player[log.player_id].append(log)
@@ -67,7 +66,6 @@ class RollingHits(FeatureExtractor):
                     row[f"hits_last_{w}"] = total
                     row[f"hit_rate_last_{w}"] = round(total / w, 3) if len(buf) == w else None
                 rows.append(row)
-                # Append this game's hits to all windows *after* computing
                 for w in self._windows:
                     window_buffers[w].append(log.hits)
 

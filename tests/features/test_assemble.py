@@ -1,5 +1,5 @@
 from mibl.data.schemas import PlayerGameLog
-from pipeline.assemble import build_feature_matrix, describe_features
+from mibl.features.assemble import build_feature_matrix, describe_features
 
 
 def _log(**kw) -> PlayerGameLog:
@@ -20,21 +20,16 @@ class TestBuildFeatureMatrix:
         matrix = build_feature_matrix(logs)
         assert len(matrix) == 1
         r = matrix[0]
-        # Should contain keys from all registered extractors
         assert r["player_id"] == 1
         assert r["game_pk"] == 1000
         assert r["date"] == "2025-04-01"
-        # Rolling features
         assert "hits_last_5" in r
         assert "hit_rate_last_5" in r
-        # Context features
         assert "is_home" in r
         assert "rest_days" in r
         assert "park_wOBA" in r
         assert "weather_condition" in r
-        # Matchup features
         assert "opp_era" in r
-        # Statcast features (should be None since no CSV data passed)
         assert "xba" in r
 
     def test_multiple_games(self):
@@ -53,12 +48,11 @@ class TestBuildFeatureMatrix:
 
     def test_with_teams_data(self):
         teams = [
-            {"id": 108, "venue": {"id": 19}},   # Coors Field
-            {"id": 145, "venue": {"id": 680}},   # T-Mobile
+            {"id": 108, "venue": {"id": 19}},
+            {"id": 145, "venue": {"id": 680}},
         ]
         logs = [_log(team_id=108, opponent_id=145, is_home=True)]
         matrix = build_feature_matrix(logs, teams=teams, season=2025)
-        # Coors is extremely hitter-friendly — park_wOBA > 1.0
         assert matrix[0]["park_wOBA"] > 1.0
 
     def test_with_game_contexts(self):
@@ -94,13 +88,11 @@ class TestBuildFeatureMatrix:
             },
         )
         r = matrix[0]
-        # Coors Field → hitter-friendly, park_wOBA > 1.0
         assert r["park_wOBA"] > 1.0
         assert r["weather_condition"] == "Cloudy"
         assert r["opp_era"] == 4.00
 
     def test_without_data_defaults_to_none(self):
-        """When no optional data passed, features should default to None/1.0."""
         logs = [_log()]
         matrix = build_feature_matrix(logs)
         r = matrix[0]

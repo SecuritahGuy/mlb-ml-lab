@@ -68,8 +68,7 @@ feed = client.get_game_context(778554)
 ### Build a feature matrix
 
 ```python
-from mibl import MlbClient
-from pipeline import build_feature_matrix, describe_features, make_targets
+from mibl import MlbClient, build_feature_matrix, describe_features, make_targets
 
 client = MlbClient()
 
@@ -126,27 +125,26 @@ print(factor)  # e.g. 1.11 (11% boost)
 mibl/
 ├── src/
 │   └── mibl/
-│       └── data/               # Data layer
-│           ├── client.py       # MlbClient — MLB Stats API + Baseball Savant
-│           ├── schemas.py      # Typed dataclasses
-│           ├── cache.py        # DiskCache (JSON, per-key TTL)
-│           ├── rate_limiter.py # TokenBucket rate limiter
-│           ├── parks.py        # ParkFactors (Savant scrape + fallback)
-│           └── weather.py      # NwsWeather (NWS API, free, no key)
-├── pipeline/                   # Feature engineering (separable)
-│   ├── base.py                 # FeatureExtractor ABC, registry
-│   ├── rolling.py              # Rolling window stats (hits, PA, BABIP)
-│   ├── context.py              # Home/away, rest days, park factors, weather
-│   ├── matchup.py              # Opponent pitching stats
-│   ├── statcast.py             # Statcast advanced metrics
-│   ├── forecast.py             # NWS weather forecast features
-│   ├── assemble.py             # build_feature_matrix(), describe_features()
-│   └── targets.py              # make_targets() for hit thresholds
+│       ├── data/               # Data layer (installable)
+│       │   ├── client.py       # MlbClient — MLB Stats API + Baseball Savant
+│       │   ├── schemas.py      # Typed dataclasses
+│       │   ├── cache.py        # DiskCache (JSON, per-key TTL)
+│       │   ├── rate_limiter.py # TokenBucket rate limiter
+│       │   ├── parks.py        # ParkFactors (Savant scrape + fallback)
+│       │   └── weather.py      # NwsWeather (NWS API, free, no key)
+│       └── features/           # Feature engineering (installable)
+│           ├── base.py         # FeatureExtractor ABC, registry
+│           ├── rolling.py      # Rolling window stats (hits, PA, BABIP)
+│           ├── context.py      # Home/away, rest days, park factors, weather
+│           ├── matchup.py      # Opponent pitching stats
+│           ├── statcast.py     # Statcast advanced metrics
+│           ├── forecast.py     # NWS weather forecast features
+│           ├── assemble.py     # build_feature_matrix(), describe_features()
+│           └── targets.py      # make_targets() for hit thresholds
+├── pipeline/                   # Modeling (training, prediction, evaluation)
 ├── tests/
 │   ├── data/                   # Tests for data layer
-│   │   └── test_weather.py
-│   └── pipeline/               # Tests for pipeline
-│       └── test_forecast.py
+│   └── features/               # Tests for feature engineering
 ├── data/                       # Raw/processed datasets (gitignored)
 ├── experiments/                # Notebooks (gitignored)
 ├── pyproject.toml
@@ -166,7 +164,7 @@ poetry run pytest
 poetry run pytest --runslow
 
 # Run a single test
-poetry run pytest tests/pipeline/test_forecast.py::TestWeatherForecastFeatures::test_indoor_venue_returns_indoor -v
+poetry run pytest tests/features/test_forecast.py::TestWeatherForecastFeatures::test_indoor_venue_returns_indoor -v
 
 # Lint
 poetry run ruff check .
@@ -177,10 +175,10 @@ poetry run ruff format .
 
 ### Adding a new feature extractor
 
-1. Create a new module in `pipeline/` (e.g. `pipeline/schedule.py`).
+1. Create a new module in `src/mibl/features/` (e.g. `src/mibl/features/schedule.py`).
 2. Subclass `FeatureExtractor`, implement `features` and `extract`.
 3. Decorate with `@register`.
-4. Import it in `pipeline/__init__.py`.
+4. Import it in `src/mibl/features/__init__.py`.
 5. It will automatically be discovered by `build_feature_matrix()`.
 
 ## Data Sources

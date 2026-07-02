@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 from mibl.data.schemas import PlayerGameLog
 from mibl.data.weather import NwsWeather
-from pipeline.assemble import build_feature_matrix, describe_features
-from pipeline.forecast import WeatherForecastFeatures
+from mibl.features.assemble import build_feature_matrix, describe_features
+from mibl.features.forecast import WeatherForecastFeatures
 
 
 def _log(**kw: Any) -> PlayerGameLog:
@@ -34,7 +34,6 @@ def _log(**kw: Any) -> PlayerGameLog:
 
 
 def _mock_nws(fixed_result: dict[str, Any] | None = None) -> MagicMock:
-    """Return a mock NwsWeather that returns *fixed_result* for every call."""
     nws = MagicMock(spec=NwsWeather)
     nws.forecast.return_value = fixed_result or {
         "temp": 72,
@@ -87,7 +86,6 @@ class TestWeatherForecastFeatures:
     def test_away_game_uses_opponent_venue(self):
         nws = _mock_nws()
         extractor = WeatherForecastFeatures()
-        # Player is away: team_id=108, opponent_id=145 → home team is 145
         logs = [_log(team_id=108, opponent_id=145, is_home=False)]
         contexts = {
             1000: {"game_datetime": "2025-04-01T18:10:00Z"},
@@ -126,7 +124,6 @@ class TestWeatherForecastFeatures:
         assert r["forecast_conditions"] == "Indoor"
         assert r["forecast_temp"] == 72
         assert r["forecast_precip_pct"] == 0
-        # Indoor check is done in the extractor — NWS API is never called
         nws.forecast.assert_not_called()
 
     def test_no_contexts_defaults_to_none(self):
@@ -147,7 +144,7 @@ class TestWeatherForecastFeatures:
         nws = _mock_nws()
         extractor = WeatherForecastFeatures()
         logs = [_log()]
-        contexts = {1000: {"weather_condition": "Clear"}}  # no game_datetime
+        contexts = {1000: {"weather_condition": "Clear"}}
         teams = [{"id": 108, "venue": {"id": 19}}]
         rows = extractor.extract(
             game_logs=logs, teams=teams, game_contexts=contexts, nws=nws,
@@ -229,7 +226,6 @@ class TestWeatherForecastFeatures:
         assert nws.forecast.call_count == 2
 
     def test_mixed_availability(self):
-        """Some games have contexts, some don't."""
         nws = _mock_nws()
         extractor = WeatherForecastFeatures()
         logs = [
@@ -239,33 +235,25 @@ class TestWeatherForecastFeatures:
         ]
         contexts = {
             1000: {"game_datetime": "2025-04-01T18:10:00Z"},
-            # 1001 has context with no game_datetime
             1001: {"weather_condition": "Clear"},
-            # 1002 not in contexts at all
         }
         teams = [{"id": 108, "venue": {"id": 19}}, {"id": 145, "venue": {"id": 680}}]
         rows = extractor.extract(
             game_logs=logs, teams=teams, game_contexts=contexts, nws=nws,
         )
         assert len(rows) == 3
-        assert rows[0]["forecast_temp"] == 72  # 1000 has game_datetime
-        assert rows[1]["forecast_temp"] is None  # 1001 has context but no datetime
-        assert rows[2]["forecast_temp"] is None  # 1002 not in contexts
+        assert rows[0]["forecast_temp"] == 72
+        assert rows[1]["forecast_temp"] is None
+        assert rows[2]["forecast_temp"] is None
         assert nws.forecast.call_count == 1
 
     def test_defaults_to_live_nws_when_not_injected(self):
-        """When no nws kwarg, extractor creates a real NwsWeather."""
         extractor = WeatherForecastFeatures()
-        # Calling extract() without nws → creates default NwsWeather
-        # This just shouldn't crash (won't actually call the API
-        # because there are no contexts)
         rows = extractor.extract(game_logs=[_log()])
         assert rows[0]["forecast_temp"] is None
 
 
 class TestForecastInFullAssembly:
-    """Verify forecast features appear in build_feature_matrix output."""
-
     def test_forecast_features_in_matrix(self):
         nws = _mock_nws()
         logs = [_log()]

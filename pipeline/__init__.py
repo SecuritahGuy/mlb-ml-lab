@@ -1,11 +1,6 @@
-# Import all feature extractors so they register themselves
-import pipeline.context  # noqa: F401
-import pipeline.forecast  # noqa: F401
-import pipeline.matchup  # noqa: F401
-import pipeline.rolling  # noqa: F401
-import pipeline.statcast  # noqa: F401
+"""Modeling pipeline — train, predict, and evaluate hit over/under models.
 
-from pipeline.assemble import build_feature_matrix, describe_features
-from pipeline.targets import make_targets
-
-__all__ = ["build_feature_matrix", "describe_features", "make_targets"]
+Feature engineering lives in ``mibl.features``.  This module will contain
+model training, hyperparameter tuning, walk-forward validation, and
+prediction logic.
+"""

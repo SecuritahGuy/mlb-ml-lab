@@ -1,5 +1,5 @@
 from mibl.data.schemas import PlayerGameLog
-from pipeline.targets import make_targets
+from mibl.features.targets import make_targets
 
 
 def _log(hits: int, **kw) -> PlayerGameLog:

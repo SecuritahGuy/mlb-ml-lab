@@ -30,16 +30,16 @@ Build thin, testable wrappers around the official public MLB Stats API at `stats
 
 ## Phase 2: Feature Engineering (complete)
 
-- [x] `pipeline/rolling.py` — rolling averages (L5, L10, L20) of hits, PA, BB/K rate, BABIP; no lookahead
-- [x] `pipeline/matchup.py` — opponent team pitching features (ERA, K/9, WHIP, BAA, HR/9)
-- [x] `pipeline/context.py` — home/away, rest days, park factors, weather (condition, temp, wind)
-- [x] `pipeline/statcast.py` — advanced hitting metrics from Savant leaderboards (xBA, xwOBA, barrel %, exit velo)
-- [x] `pipeline/assemble.py` — ``build_feature_matrix()`` merges all extractors on (player_id, game_pk, date); ``describe_features()`` returns metadata
-- [x] `pipeline/targets.py` — binary targets for hit thresholds (0.5 and 1.5)
-- [x] Unit tests: 49 pipeline tests covering correctness, no lookahead, null handling, edge cases
-- [x] `MlbClient.get_team_pitching_stats()` convenience method
+- [x] `src/mibl/features/rolling.py` — rolling averages (L5, L10, L20) of hits, PA, BB/K rate, BABIP; no lookahead
+- [x] `src/mibl/features/matchup.py` — opponent team pitching features (ERA, K/9, WHIP, BAA, HR/9)
+- [x] `src/mibl/features/context.py` — home/away, rest days, park factors, weather (condition, temp, wind)
+- [x] `src/mibl/features/statcast.py` — advanced hitting metrics from Savant leaderboards (xBA, xwOBA, barrel %, exit velo, sweet-spot, FB/LD, GB)
+- [x] `src/mibl/features/forecast.py` — NWS weather forecast features (temp, wind, precip, conditions)
+- [x] `src/mibl/features/assemble.py` — ``build_feature_matrix()`` merges all extractors on (player_id, game_pk, date); ``describe_features()`` returns metadata
+- [x] `src/mibl/features/targets.py` — binary targets for hit thresholds (0.5 and 1.5)
+- [x] Unit tests: 117 tests covering correctness, no lookahead, null handling, edge cases
 
-**Architecture**: The `pipeline/` directory is a separable feature engineering package. Each extractor is a registered `FeatureExtractor` subclass; the assembler discovers them via the registry. Optional data sources (`teams`, `game_contexts`, `opponent_pitching`, `statcast_batters`, `expected_stats`) are passed through kwargs and extractors silently default to None/1.0 when absent.
+**Architecture**: Feature engineering lives in `src/mibl/features/` as part of the installable package. Each extractor is a registered `FeatureExtractor` subclass; the assembler discovers them via the registry. Optional data sources (`teams`, `game_contexts`, `opponent_pitching`, `statcast_batters`, `expected_stats`) are passed through kwargs and extractors silently default to None/1.0 when absent.  The `pipeline/` directory at project root is reserved for model training and prediction.
 
 ## Phase 3: Model Training
 

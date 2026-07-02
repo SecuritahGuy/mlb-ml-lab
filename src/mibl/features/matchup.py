@@ -15,7 +15,7 @@ from typing import Any
 
 from mibl.data.schemas import PlayerGameLog
 
-from pipeline.base import FeatureExtractor, FeatureMeta, register
+from mibl.features.base import FeatureExtractor, FeatureMeta, register
 
 
 @register

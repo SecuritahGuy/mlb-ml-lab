@@ -1,5 +1,5 @@
 from mibl.data.schemas import PlayerGameLog
-from pipeline.context import (
+from mibl.features.context import (
     HomeAwayFeature,
     RestDaysFeature,
     ParkFactorFeatures,
@@ -42,7 +42,7 @@ class TestRestDaysFeature:
             _log(date="2025-04-02", game_pk=2),
         ]
         rows = RestDaysFeature().extract(game_logs=logs)
-        assert rows[1]["rest_days"] == 0  # back-to-back
+        assert rows[1]["rest_days"] == 0
 
     def test_one_day_off(self):
         logs = [
@@ -59,11 +59,10 @@ class TestRestDaysFeature:
             _log(player_id=1, date="2025-04-03", game_pk=3),
         ]
         rows = {r["game_pk"]: r for r in RestDaysFeature().extract(game_logs=logs)}
-        assert rows[1]["rest_days"] is None  # player 2 first game
-        assert rows[3]["rest_days"] == 1     # player 1 had 1 day off
+        assert rows[1]["rest_days"] is None
+        assert rows[3]["rest_days"] == 1
 
     def test_invalid_date_format(self):
-        """Should not crash on unparseable dates."""
         logs = [
             _log(date="2025-04-01", game_pk=1),
             _log(date="bad-date", game_pk=2, player_id=1),
@@ -82,43 +81,32 @@ class TestParkFactorFeatures:
         assert "park_1B" in r
 
     def test_no_teams_defaults_to_neutral(self):
-        """Without teams data all park factors should be 1.0."""
         log = _log()
         rows = ParkFactorFeatures().extract(game_logs=[log])
         assert rows[0]["park_wOBA"] == 1.0
 
     def test_team_without_venue_defaults(self):
-        """Team with no venue data should get neutral factors."""
         teams = [{"id": 108, "venue": None}]
         log = _log(team_id=108, is_home=True)
         rows = ParkFactorFeatures().extract(game_logs=[log], teams=teams)
         assert rows[0]["park_wOBA"] == 1.0
 
     def test_home_game_uses_player_team_venue(self):
-        """Home game should set non-neutral factor from the player's
-        team venue."""
-        teams = [{"id": 108, "venue": {"id": 19}}]  # Coors Field
+        teams = [{"id": 108, "venue": {"id": 19}}]
         log = _log(team_id=108, opponent_id=145, is_home=True)
         rows = ParkFactorFeatures().extract(game_logs=[log], teams=teams, season=2025)
-        # Coors Field (venue 19) is extremely hitter-friendly — factor
-        # should be well above 1.0
         assert rows[0]["park_wOBA"] > 1.0
 
     def test_away_game_uses_opponent_venue(self):
-        """Away game should use the opponent's venue (home team's park)
-        rather than the player's team venue."""
         teams = [
-            {"id": 108, "venue": {"id": 19}},   # Coors (high)
-            {"id": 145, "venue": {"id": 680}},   # T-Mobile (low)
+            {"id": 108, "venue": {"id": 19}},
+            {"id": 145, "venue": {"id": 680}},
         ]
-        # Player on team 108, away at team 145's park
         log = _log(team_id=108, opponent_id=145, is_home=False)
         rows = ParkFactorFeatures().extract(game_logs=[log], teams=teams, season=2025)
-        # T-Mobile (venue 680) is pitcher-friendly — below 1.0
         assert rows[0]["park_HR"] < 1.0
 
     def test_resolve_venue_map_returns_expected_mapping(self):
-        """Verify _resolve_venue_map produces correct team_id→venue_id."""
         teams = [
             {"id": 108, "venue": {"id": 1}},
             {"id": 145, "venue": {"id": 4}},

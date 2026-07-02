@@ -22,7 +22,7 @@ from typing import Any
 
 from mibl.data.weather import INDOOR_VENUES, NwsWeather
 
-from pipeline.base import FeatureExtractor, FeatureMeta, register
+from mibl.features.base import FeatureExtractor, FeatureMeta, register
 
 
 @register
@@ -78,7 +78,6 @@ class WeatherForecastFeatures(FeatureExtractor):
         contexts: dict[int, dict[str, Any]] | None = kwargs.get("game_contexts")
         venue_map = _resolve_venue_map(teams)
 
-        # Accept injected NwsWeather from kwargs; else create once
         nws: NwsWeather = kwargs.get("nws") or self._nws or NwsWeather()
         if self._nws is None:
             self._nws = nws
@@ -88,7 +87,6 @@ class WeatherForecastFeatures(FeatureExtractor):
             ctx = (contexts or {}).get(log.game_pk, {}) if contexts else {}
             game_datetime_str: str | None = ctx.get("game_datetime")
 
-            # Resolve venue: home team's park
             home_team_id = log.team_id if log.is_home else log.opponent_id
             venue_id = venue_map.get(home_team_id)
 
@@ -130,13 +128,13 @@ class WeatherForecastFeatures(FeatureExtractor):
         return rows
 
     def close(self) -> None:
-        self._nws.close()
+        if self._nws:
+            self._nws.close()
 
 
 def _resolve_venue_map(
     teams: list[dict[str, Any]] | None,
 ) -> dict[int, int]:
-    """Build team_id → venue_id mapping from MLB API team data."""
     if not teams:
         return {}
     mapping: dict[int, int] = {}

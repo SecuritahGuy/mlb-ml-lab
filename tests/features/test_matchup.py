@@ -1,5 +1,5 @@
 from mibl.data.schemas import PlayerGameLog
-from pipeline.matchup import TeamPitchingFeatures
+from mibl.features.matchup import TeamPitchingFeatures
 
 
 def _log(**kwargs) -> PlayerGameLog:
@@ -44,14 +44,13 @@ class TestTeamPitchingFeatures:
         assert r["opp_hr_per_9"] == 1.1
 
     def test_uses_opponent_not_player_team(self):
-        """Must use opponent_id, not team_id."""
         pitching = {
             108: {"era": 2.00},
             145: {"era": 4.50},
         }
         log = _log(team_id=108, opponent_id=145)
         rows = TeamPitchingFeatures().extract(game_logs=[log], opponent_pitching=pitching)
-        assert rows[0]["opp_era"] == 4.50  # opponent_id=145
+        assert rows[0]["opp_era"] == 4.50
 
     def test_team_not_in_dict_all_none(self):
         pitching = {999: {"era": 3.00}}
@@ -60,7 +59,7 @@ class TestTeamPitchingFeatures:
         assert rows[0]["opp_era"] is None
 
     def test_partial_stat_dict(self):
-        pitching = {145: {"era": 4.00}}  # only era provided
+        pitching = {145: {"era": 4.00}}
         log = _log(opponent_id=145)
         rows = TeamPitchingFeatures().extract(game_logs=[log], opponent_pitching=pitching)
         r = rows[0]

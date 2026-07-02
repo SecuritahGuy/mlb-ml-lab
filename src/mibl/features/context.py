@@ -8,7 +8,7 @@ from typing import Any
 from mibl.data.parks import ParkFactors
 from mibl.data.schemas import PlayerGameLog
 
-from pipeline.base import FeatureExtractor, FeatureMeta, register
+from mibl.features.base import FeatureExtractor, FeatureMeta, register
 
 
 @register
@@ -67,13 +67,6 @@ class ParkFactorFeatures(FeatureExtractor):
         venue_map: dict[int, int],
         season: int | None,
     ) -> dict[str, float]:
-        """Return park factors for the venue this game was played at.
-
-        For home games use the player's team venue; for away games use
-        the opponent's venue.
-        """
-        # The venue used is always the home team's.  If the player is
-        # away, their opponent is the home team, so we use opponent_id.
         home_team_id = log.team_id if log.is_home else log.opponent_id
         venue_id = venue_map.get(home_team_id)
         if venue_id is None:
@@ -88,7 +81,6 @@ class ParkFactorFeatures(FeatureExtractor):
     def _resolve_venue_map(
         teams: list[dict[str, Any]] | None,
     ) -> dict[int, int]:
-        """Build team_id → venue_id mapping from MLB API team data."""
         if not teams:
             return {}
         mapping: dict[int, int] = {}

@@ -10,7 +10,7 @@ from typing import Any
 
 from mibl.data.schemas import PlayerGameLog
 
-from pipeline.base import get_registry, FeatureMeta
+from mibl.features.base import get_registry, FeatureMeta
 
 
 def build_feature_matrix(
@@ -63,7 +63,6 @@ def build_feature_matrix(
     if not all_feature_rows:
         return []
 
-    # Merge on (player_id, game_pk, date)
     key_cols = ("player_id", "game_pk", "date")
     merged: dict[tuple, dict[str, Any]] = {}
     for row in all_feature_rows:

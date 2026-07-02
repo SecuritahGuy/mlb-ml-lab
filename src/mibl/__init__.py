@@ -16,6 +16,8 @@ from mibl.data import (
     VenueInfo,
 )
 
+from mibl.features import build_feature_matrix, describe_features, make_targets
+
 __all__ = [
     "BoxscorePlayer",
     "DiskCache",
@@ -30,4 +32,7 @@ __all__ = [
     "TeamInfo",
     "TokenBucket",
     "VenueInfo",
+    "build_feature_matrix",
+    "describe_features",
+    "make_targets",
 ]

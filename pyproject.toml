@@ -17,6 +17,7 @@ classifiers = [
     "Topic :: Games/Entertainment :: Simulation",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+packages = [{include = "mibl", from = "src"}]
 
 [tool.poetry.dependencies]
 python = ">=3.12"

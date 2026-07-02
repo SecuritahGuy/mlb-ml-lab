@@ -1,9 +1,8 @@
 from mibl.data.schemas import PlayerGameLog
-from pipeline.rolling import RollingHits, RollingPlateAppearances, RollingBABIP
+from mibl.features.rolling import RollingHits, RollingPlateAppearances, RollingBABIP
 
 
 def _make_logs() -> list[PlayerGameLog]:
-    """Return 6 game logs for player 1, 4 for player 2."""
     logs: list[PlayerGameLog] = []
     dates = ["2025-04-01", "2025-04-02", "2025-04-03", "2025-04-04", "2025-04-05", "2025-04-06"]
     for i, d in enumerate(dates):
@@ -31,17 +30,10 @@ class TestRollingHits:
         extractor = RollingHits(windows=[3])
         rows = extractor.extract(game_logs=logs)
         by_pk = {r["game_pk"]: r for r in rows}
-
-        # First game: no prior data
         assert by_pk[1000]["hits_last_3"] == 0
         assert by_pk[1000]["hit_rate_last_3"] is None
-
-        # 4th game: should have 3 prior games' hits
-        # hits were: game1=0, game2=1, game3=2 → total=3
         assert by_pk[1003]["hits_last_3"] == 3
         assert by_pk[1003]["hit_rate_last_3"] == 1.0
-
-        # 6th game: last 3 were 0, 2, 1 → total=3
         assert by_pk[1005]["hits_last_3"] == 3
 
     def test_includes_all_games(self):
@@ -70,7 +62,6 @@ class TestRollingPlateAppearances:
         logs = _make_logs()
         rows = RollingPlateAppearances(windows=[3]).extract(game_logs=logs)
         by_pk = {r["game_pk"]: r for r in rows}
-        # 4th game: avg PA from PA=5, PA=5, PA=5
         assert by_pk[1003]["avg_pa_last_3"] == 5.0
 
     def test_bb_rate(self):
@@ -78,13 +69,11 @@ class TestRollingPlateAppearances:
         rows = RollingPlateAppearances(windows=[3]).extract(game_logs=logs)
         by_pk = {r["game_pk"]: r for r in rows}
         r = by_pk[1003]
-        # 4th game: 3 prior games, walks were 0,1,0 on PA 5,5,5
         assert r["bb_rate_last_3"] is not None
 
     def test_null_before_warmup(self):
         logs = _make_logs()
         rows = RollingPlateAppearances(windows=[5]).extract(game_logs=logs)
-        # Player 2 has only 4 games — L5 not yet filled
         p2_rows = [r for r in rows if r["player_id"] == 2]
         assert p2_rows[-1]["avg_pa_last_5"] is None
 
