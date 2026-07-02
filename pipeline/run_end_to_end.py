@@ -18,17 +18,16 @@ from mlb_ml_lab import (
     describe_features,
     make_targets,
 )
-from mlb_ml_lab.models import train_baselines
+from mlb_ml_lab.models.train import MODEL_HELP, train_baselines
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 TEAM_ID = 108  # Los Angeles Angels
 SEASON = 2024
 MAX_PLAYERS = 5
-SAMPLE_GAMES = 60  # games per player (null values allowed)
+SAMPLE_GAMES = 60
 
 
 def fetch_roster_players(client: MlbClient) -> list[dict[str, Any]]:
-    """Fetch roster and return position players only."""
     roster = client.get_roster(TEAM_ID, season=SEASON)
     players: list[dict[str, Any]] = []
     for p in roster:
@@ -43,7 +42,6 @@ def fetch_roster_players(client: MlbClient) -> list[dict[str, Any]]:
 def fetch_game_logs(
     client: MlbClient, player_ids: list[int]
 ) -> list[PlayerGameLog]:
-    """Fetch game logs for a list of player IDs, limited to SAMPLE_GAMES."""
     all_logs: list[PlayerGameLog] = []
     for pid in player_ids:
         raw = client.get_player_game_log(pid, season=SEASON)
@@ -55,11 +53,10 @@ def fetch_game_logs(
 def build_game_contexts(
     client: MlbClient, game_logs: list[Any]
 ) -> dict[int, dict[str, Any]]:
-    """Fetch game context (venue, weather) for unique game_pks."""
     seen = set()
     game_pks: list[int] = []
     for log in game_logs:
-        pk = log.game_pk if hasattr(log, "game_pk") else log.get("game_pk")
+        pk = log.game_pk
         if pk not in seen:
             seen.add(pk)
             game_pks.append(pk)
@@ -77,11 +74,9 @@ def build_game_contexts(
 def fetch_opponent_pitching(
     client: MlbClient, game_logs: list[Any]
 ) -> dict[int, dict[str, float]]:
-    """Fetch pitching stats for all unique opponent teams."""
     opp_ids = set()
     for log in game_logs:
-        opp = log.opponent_id if hasattr(log, "opponent_id") else log.get("opponent_id")
-        opp_ids.add(opp)
+        opp_ids.add(log.opponent_id)
 
     pitching: dict[int, dict[str, float]] = {}
     for tid in opp_ids:
@@ -99,7 +94,6 @@ def main() -> None:
     print(f"Fetching roster for team {TEAM_ID} ({SEASON})...")
     players = fetch_roster_players(client)
     print(f"  Found {len(players)} position players")
-
     player_ids = [p["person"]["id"] for p in players]
     print(f"  Player IDs: {player_ids}")
 
@@ -119,11 +113,21 @@ def main() -> None:
     teams = client.get_teams()
     print(f"  {len(teams)} teams")
 
+    print("Fetching statcast leaderboard...")
+    statcast_batters = client.get_statcast_batters(SEASON)
+    print(f"  {len(statcast_batters)} batters")
+
+    print("Fetching expected stats...")
+    expected_stats = client.get_expected_stats(SEASON)
+    print(f"  {len(expected_stats)} batters")
+
     print("Building feature matrix...")
     feature_matrix = build_feature_matrix(
         game_logs,
         season=SEASON,
         teams=teams,
+        statcast_batters=statcast_batters,
+        expected_stats=expected_stats,
         extra_kwargs={
             "game_contexts": game_contexts,
             "opponent_pitching": opponent_pitching,
@@ -133,15 +137,13 @@ def main() -> None:
 
     metas = describe_features()
     print(f"  {len(metas)} feature columns registered")
-    for m in metas:
-        print(f"    {m.name:30s} {m.source:15s} {m.description}")
 
     print("Building targets...")
     targets = make_targets(game_logs)
     print(f"  {len(targets)} target rows")
 
     print("=" * 60)
-    print("Training baseline models (walk-forward, 3 folds)...")
+    print("Training models (walk-forward, 3 folds)...")
     print("=" * 60)
 
     for target_col in ("target_0.5", "target_1.5"):
@@ -158,14 +160,17 @@ def main() -> None:
             continue
 
         for model_type, mdata in result["models"].items():
-            print(f"\n  Model: {model_type.upper()}")
+            label = MODEL_HELP.get(model_type, model_type.upper())
+            print(f"\n  {label}")
             print(f"    Avg accuracy: {mdata['avg_accuracy']:.4f}")
             print(f"    Avg AUC:      {mdata['avg_auc']:.4f}")
             print(f"    Folds:        {mdata['n_folds']}")
             for fm in mdata["fold_metrics"]:
-                auc_str = f"{fm['auc']:.4f}" if not fm.get("auc") != fm.get("auc") else "N/A"
+                auc_s = f"{fm['auc']:.4f}" if not (
+                    fm.get("auc") is None or fm["auc"] != fm["auc"]
+                ) else "N/A"
                 print(f"      Fold {fm['fold']}: "
-                      f"acc={fm['accuracy']:.4f}  auc={auc_str}  "
+                      f"acc={fm['accuracy']:.4f}  auc={auc_s}  "
                       f"n_train={fm['n_train']}  n_test={fm['n_test']}")
 
     print("\nDone.")

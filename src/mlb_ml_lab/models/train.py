@@ -1,4 +1,4 @@
-"""Baseline model training with walk-forward validation."""
+"""Model training with walk-forward validation and ensemble support."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ from datetime import date
 from typing import Any
 
 import numpy as np
+from lightgbm import LGBMClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
@@ -39,15 +41,6 @@ class WalkForwardSplit:
     def split(
         self, dates: list[date]
     ) -> list[tuple[list[int], list[int]]]:
-        """Generate train/test index pairs for each fold.
-
-        Args:
-            dates: Per-row game dates, **must already be sorted
-                   chronologically**.
-
-        Returns:
-            List of ``(train_idx, test_idx)`` tuples, one per fold.
-        """
         n = len(dates)
         fold_size = (n - self.min_train_size) // self.n_splits
         if fold_size < 1:
@@ -60,8 +53,7 @@ class WalkForwardSplit:
         for i in range(self.n_splits):
             train_end = self.min_train_size + i * fold_size
             test_start = train_end + self.gap
-            test_end = test_start + fold_size
-            test_end = min(test_end, n)
+            test_end = min(test_start + fold_size, n)
             if test_start >= n:
                 break
             train_idx = list(range(train_end))
@@ -74,7 +66,6 @@ def _merge_features_targets(
     feature_matrix: list[dict[str, Any]],
     targets: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Merge features and targets on (player_id, game_pk)."""
     key_cols = ("player_id", "game_pk")
     target_map: dict[tuple, dict[str, Any]] = {}
     for t in targets:
@@ -99,7 +90,6 @@ def _feature_columns(
     rows: list[dict[str, Any]],
     exclude: set[str] | None = None,
 ) -> list[str]:
-    """Return sorted list of numeric feature column names."""
     exclude_set = {
         "player_id",
         "game_pk",
@@ -128,6 +118,92 @@ def _feature_columns(
     return cols
 
 
+def _build_model(
+    model_type: str, seed: int
+) -> Any:
+    if model_type == "lr":
+        return LogisticRegression(max_iter=1000, random_state=seed)
+    if model_type == "xgb":
+        return XGBClassifier(
+            n_estimators=300,
+            learning_rate=0.05,
+            max_depth=5,
+            random_state=seed,
+            n_jobs=-1,
+            verbosity=0,
+            eval_metric="logloss",
+        )
+    if model_type == "rf":
+        return RandomForestClassifier(
+            n_estimators=300,
+            max_depth=8,
+            random_state=seed,
+            n_jobs=-1,
+        )
+    if model_type == "lgb":
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            return LGBMClassifier(
+                n_estimators=300,
+                learning_rate=0.05,
+                max_depth=5,
+                random_state=seed,
+                n_jobs=-1,
+                verbosity=-1,
+                deterministic=True,
+            )
+    raise ValueError(f"Unknown model type: {model_type}")
+
+
+MODEL_HELP = {
+    "lr": "LogisticRegression",
+    "xgb": "XGBoost",
+    "rf": "RandomForest",
+    "lgb": "LightGBM",
+}
+
+
+def _run_fold(
+    model_type: str, x_train: np.ndarray, y_train: np.ndarray,
+    x_test: np.ndarray, y_test: np.ndarray, fold_idx: int, seed: int,
+) -> dict[str, float]:
+    model = _build_model(model_type, seed)
+    model.fit(x_train, y_train)
+    y_pred = model.predict(x_test)
+    y_proba = model.predict_proba(x_test)[:, 1]
+    metrics = classification_metrics(
+        y_test.tolist(), y_pred.tolist(), y_proba.tolist(),
+    )
+    metrics["fold"] = fold_idx
+    metrics["n_train"] = len(x_train)
+    metrics["n_test"] = len(x_test)
+    metrics["model_type"] = model_type
+    return metrics
+
+
+def _run_ensemble_fold(
+    eval_models: list[str], x_train: np.ndarray, y_train: np.ndarray,
+    x_test: np.ndarray, y_test: np.ndarray, fold_idx: int, seed: int,
+) -> dict[str, float]:
+    probas: list[np.ndarray] = []
+    for mt in eval_models:
+        model = _build_model(mt, seed)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            model.fit(x_train, y_train)
+            probas.append(model.predict_proba(x_test)[:, 1])
+    avg_proba = np.mean(probas, axis=0)
+    avg_pred = (avg_proba > 0.5).astype(np.int32)
+    metrics = classification_metrics(
+        y_test.tolist(), avg_pred.tolist(), avg_proba.tolist(),
+    )
+    metrics["fold"] = fold_idx
+    metrics["n_train"] = len(x_train)
+    metrics["n_test"] = len(x_test)
+    metrics["model_type"] = "ensemble"
+    return metrics
+
+
 def train_baselines(
     feature_matrix: list[dict[str, Any]],
     targets: list[dict[str, Any]],
@@ -136,38 +212,7 @@ def train_baselines(
     n_splits: int = 5,
     seed: int = 42,
 ) -> dict[str, Any]:
-    """Run walk-forward validation for one or more baseline classifiers.
-
-    Args:
-        feature_matrix: Output of ``build_feature_matrix()``.
-        targets: Output of ``make_targets()``.
-        target_col: Which target column to predict (e.g. ``"target_0.5"``
-                    or ``"target_1.5"``).
-        model_types: Which models to train.  Options: ``"lr"``
-                     (LogisticRegression), ``"xgb"`` (XGBClassifier).
-                     Defaults to ``["lr", "xgb"]``.
-        n_splits: Number of walk-forward folds.
-        seed: Random seed for reproducibility.
-
-    Returns:
-        Dict with structure::
-
-            {
-                "target_col": "...",
-                "models": {
-                    "lr": {
-                        "fold_metrics": [{fold-0 metrics}, ...],
-                        "avg_accuracy": ...,
-                        "avg_auc": ...,
-                        "n_folds": ...,
-                    },
-                    "xgb": { ... },
-                },
-                "n_train_total": ...,
-                "n_test_total": ...,
-            }
-    """
-    model_types = model_types or ["lr", "xgb"]
+    model_types = model_types or ["lr", "xgb", "rf", "lgb", "ensemble"]
     merged = _merge_features_targets(feature_matrix, targets)
     if not merged:
         return {"target_col": target_col, "models": {}, "error": "no merged rows"}
@@ -198,66 +243,55 @@ def train_baselines(
         "n_test_total": 0,
     }
 
+    eval_models = [m for m in model_types if m != "ensemble"]
+    do_ensemble = "ensemble" in model_types
+
     for model_type in model_types:
+        if model_type == "ensemble":
+            continue
         model_type = model_type.strip().lower()
         fold_metrics: list[dict[str, float]] = []
         for fold_idx, (train_idx, test_idx) in enumerate(folds):
-            x_train = x_all[train_idx]
-            y_train = y_all[train_idx]
-            x_test = x_all[test_idx]
-            y_test = y_all[test_idx]
-
-            if model_type == "lr":
-                model = LogisticRegression(
-                    max_iter=1000,
-                    random_state=seed,
-                )
-            elif model_type == "xgb":
-                model = XGBClassifier(
-                    n_estimators=300,
-                    learning_rate=0.05,
-                    max_depth=5,
-                    random_state=seed,
-                    n_jobs=-1,
-                    verbosity=0,
-                    eval_metric="logloss",
-                )
-            else:
-                raise ValueError(f"Unknown model type: {model_type}")
-
-            model.fit(x_train, y_train)
-            y_pred = model.predict(x_test)
-            y_proba = model.predict_proba(x_test)[:, 1]
-
-            metrics = classification_metrics(
-                y_test.tolist(),
-                y_pred.tolist(),
-                y_proba.tolist(),
+            metrics = _run_fold(
+                model_type, x_all[train_idx], y_all[train_idx],
+                x_all[test_idx], y_all[test_idx], fold_idx, seed,
             )
-            metrics["fold"] = fold_idx
-            metrics["n_train"] = len(train_idx)
-            metrics["n_test"] = len(test_idx)
-            metrics["model_type"] = model_type
             fold_metrics.append(metrics)
 
         avg_acc = float(np.mean([m["accuracy"] for m in fold_metrics]))
         avg_auc = float(
             np.mean(
-                [m["auc"] for m in fold_metrics if not np.isnan(m.get("auc", float("nan")))]
+                [m["auc"] for m in fold_metrics
+                 if not np.isnan(m.get("auc", float("nan")))]
             )
         )
-
-        model_entry: dict[str, Any] = {
+        results["models"][model_type] = {
             "fold_metrics": fold_metrics,
             "avg_accuracy": avg_acc,
             "avg_auc": avg_auc,
             "n_folds": len(fold_metrics),
         }
-        results["models"][model_type] = model_entry
+        results["n_train_total"] += sum(m["n_train"] for m in fold_metrics)
+        results["n_test_total"] += sum(m["n_test"] for m in fold_metrics)
 
-        total_train = sum(m["n_train"] for m in fold_metrics)
-        total_test = sum(m["n_test"] for m in fold_metrics)
-        results["n_train_total"] += total_train
-        results["n_test_total"] += total_test
+    if do_ensemble:
+        ensemble_metrics = [
+            _run_ensemble_fold(
+                eval_models, x_all[train_idx], y_all[train_idx],
+                x_all[test_idx], y_all[test_idx], fold_idx, seed,
+            )
+            for fold_idx, (train_idx, test_idx) in enumerate(folds)
+        ]
+        results["models"]["ensemble"] = {
+            "fold_metrics": ensemble_metrics,
+            "avg_accuracy": float(np.mean([m["accuracy"] for m in ensemble_metrics])),
+            "avg_auc": float(
+                np.mean(
+                    [m["auc"] for m in ensemble_metrics
+                     if not np.isnan(m.get("auc", float("nan")))]
+                )
+            ),
+            "n_folds": len(ensemble_metrics),
+        }
 
     return results
