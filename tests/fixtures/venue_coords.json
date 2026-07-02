@@ -1,0 +1,272 @@
+{
+  "1": {
+    "name": "Angel Stadium",
+    "lat": 33.80019044,
+    "lon": -117.8823996,
+    "capacity": 45517,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Los_Angeles"
+  },
+  "2": {
+    "name": "Oriole Park at Camden Yards",
+    "lat": 39.283787,
+    "lon": -76.621689,
+    "capacity": 44970,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/New_York"
+  },
+  "3": {
+    "name": "Fenway Park",
+    "lat": 42.346456,
+    "lon": -71.097441,
+    "capacity": 37755,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/New_York"
+  },
+  "4": {
+    "name": "Rate Field",
+    "lat": 41.83,
+    "lon": -87.634167,
+    "capacity": 40241,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Chicago"
+  },
+  "7": {
+    "name": "Kauffman Stadium",
+    "lat": 39.051567,
+    "lon": -94.480483,
+    "capacity": 38427,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Chicago"
+  },
+  "14": {
+    "name": "Rogers Centre",
+    "lat": 43.64155,
+    "lon": -79.38915,
+    "capacity": 49282,
+    "turf": "Artificial Turf",
+    "roof": "Retractable",
+    "tz_id": "America/Toronto"
+  },
+  "15": {
+    "name": "Chase Field",
+    "lat": 33.445302,
+    "lon": -112.066687,
+    "capacity": 48359,
+    "turf": "Artificial Turf",
+    "roof": "Retractable",
+    "tz_id": "America/Phoenix"
+  },
+  "17": {
+    "name": "Wrigley Field",
+    "lat": 41.948171,
+    "lon": -87.655503,
+    "capacity": 41363,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Chicago"
+  },
+  "19": {
+    "name": "Coors Field",
+    "lat": 39.756042,
+    "lon": -104.994136,
+    "capacity": 50144,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Denver"
+  },
+  "22": {
+    "name": "Dodger Stadium",
+    "lat": 34.07368,
+    "lon": -118.24053,
+    "capacity": 56000,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Los_Angeles"
+  },
+  "31": {
+    "name": "PNC Park",
+    "lat": 40.446904,
+    "lon": -80.005753,
+    "capacity": 38753,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/New_York"
+  },
+  "32": {
+    "name": "American Family Field",
+    "lat": 43.02838,
+    "lon": -87.97099,
+    "capacity": 41700,
+    "turf": "Grass",
+    "roof": "Retractable",
+    "tz_id": "America/Chicago"
+  },
+  "680": {
+    "name": "T-Mobile Park",
+    "lat": 47.591333,
+    "lon": -122.33251,
+    "capacity": 47929,
+    "turf": "Grass",
+    "roof": "Retractable",
+    "tz_id": "America/Los_Angeles"
+  },
+  "2392": {
+    "name": "Daikin Park",
+    "lat": 29.756967,
+    "lon": -95.355509,
+    "capacity": 41000,
+    "turf": "Grass",
+    "roof": "Retractable",
+    "tz_id": "America/Chicago"
+  },
+  "2394": {
+    "name": "Comerica Park",
+    "lat": 42.3391151,
+    "lon": -83.048695,
+    "capacity": 41083,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Detroit"
+  },
+  "2395": {
+    "name": "Oracle Park",
+    "lat": 37.778383,
+    "lon": -122.389448,
+    "capacity": 41915,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Los_Angeles"
+  },
+  "2397": {
+    "name": "Tokyo Dome",
+    "lat": 35.7056,
+    "lon": 139.7519,
+    "capacity": 55000,
+    "turf": "Artificial Turf",
+    "roof": "Dome",
+    "tz_id": "Asia/Tokyo"
+  },
+  "2523": {
+    "name": "George M. Steinbrenner Field",
+    "lat": 27.97997,
+    "lon": -82.50702,
+    "capacity": 10387,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/New_York"
+  },
+  "2529": {
+    "name": "Sutter Health Park",
+    "lat": 38.57994,
+    "lon": -121.51246,
+    "capacity": 14111,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Los_Angeles"
+  },
+  "2602": {
+    "name": "Great American Ball Park",
+    "lat": 39.097389,
+    "lon": -84.506611,
+    "capacity": 43891,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/New_York"
+  },
+  "2680": {
+    "name": "Petco Park",
+    "lat": 32.707861,
+    "lon": -117.157278,
+    "capacity": 40222,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Los_Angeles"
+  },
+  "2681": {
+    "name": "Citizens Bank Park",
+    "lat": 39.90539086,
+    "lon": -75.16716957,
+    "capacity": 42901,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/New_York"
+  },
+  "2889": {
+    "name": "Busch Stadium",
+    "lat": 38.62256667,
+    "lon": -90.19286667,
+    "capacity": 44494,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Chicago"
+  },
+  "3289": {
+    "name": "Citi Field",
+    "lat": 40.75753012,
+    "lon": -73.84559155,
+    "capacity": 42136,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/New_York"
+  },
+  "3309": {
+    "name": "Nationals Park",
+    "lat": 38.872861,
+    "lon": -77.007501,
+    "capacity": 41376,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/New_York"
+  },
+  "3312": {
+    "name": "Target Field",
+    "lat": 44.981829,
+    "lon": -93.277891,
+    "capacity": 38544,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/Chicago"
+  },
+  "3313": {
+    "name": "Yankee Stadium",
+    "lat": 40.82919482,
+    "lon": -73.9264977,
+    "capacity": 47309,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/New_York"
+  },
+  "4169": {
+    "name": "loanDepot park",
+    "lat": 25.77796236,
+    "lon": -80.21951795,
+    "capacity": 37446,
+    "turf": "Artificial Turf",
+    "roof": "Retractable",
+    "tz_id": "America/New_York"
+  },
+  "4705": {
+    "name": "Truist Park",
+    "lat": 33.890672,
+    "lon": -84.467641,
+    "capacity": 41149,
+    "turf": "Grass",
+    "roof": "Open",
+    "tz_id": "America/New_York"
+  },
+  "5325": {
+    "name": "Globe Life Field",
+    "lat": 32.747299,
+    "lon": -97.081818,
+    "capacity": 40000,
+    "turf": "Artificial Turf",
+    "roof": "Retractable",
+    "tz_id": "America/Chicago"
+  }
+}

@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "mibl"
+version = "0.1.0"
+description = "MLB hit over/under prediction models"
+authors = ["Tim Hollingsworth"]
+
+[tool.poetry.dependencies]
+python = ">=3.12"
+httpx = "^0.28"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8"
+ruff = ">=0.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

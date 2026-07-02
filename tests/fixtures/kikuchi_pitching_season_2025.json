@@ -1,0 +1,104 @@
+{
+  "copyright": "Copyright 2026 MLB Advanced Media, L.P.  Use of any content on this page acknowledges agreement to the terms posted here http://gdx.mlb.com/components/copyright.txt",
+  "stats": [
+    {
+      "type": {
+        "displayName": "season"
+      },
+      "group": {
+        "displayName": "pitching"
+      },
+      "exemptions": [],
+      "splits": [
+        {
+          "season": "2025",
+          "stat": {
+            "age": 32,
+            "gamesPlayed": 75,
+            "gamesStarted": 1,
+            "groundOuts": 65,
+            "airOuts": 62,
+            "runs": 35,
+            "doubles": 8,
+            "triples": 1,
+            "homeRuns": 8,
+            "strikeOuts": 75,
+            "baseOnBalls": 45,
+            "intentionalWalks": 3,
+            "hits": 50,
+            "hitByPitch": 6,
+            "avg": ".200",
+            "atBats": 250,
+            "obp": ".333",
+            "slg": ".336",
+            "ops": ".669",
+            "caughtStealing": 1,
+            "stolenBases": 13,
+            "stolenBasePercentage": ".929",
+            "caughtStealingPercentage": ".071",
+            "groundIntoDoublePlay": 3,
+            "numberOfPitches": 1274,
+            "era": "4.21",
+            "inningsPitched": "68.1",
+            "wins": 6,
+            "losses": 3,
+            "saves": 1,
+            "saveOpportunities": 2,
+            "holds": 16,
+            "blownSaves": 1,
+            "earnedRuns": 32,
+            "whip": "1.39",
+            "battersFaced": 303,
+            "outs": 205,
+            "gamesPitched": 75,
+            "completeGames": 0,
+            "shutouts": 0,
+            "strikes": 768,
+            "strikePercentage": ".600",
+            "hitBatsmen": 6,
+            "balks": 0,
+            "wildPitches": 2,
+            "pickoffs": 0,
+            "totalBases": 84,
+            "groundOutsToAirouts": "1.05",
+            "winPercentage": ".667",
+            "pitchesPerInning": "18.64",
+            "gamesFinished": 8,
+            "strikeoutWalkRatio": "1.67",
+            "strikeoutsPer9Inn": "9.88",
+            "walksPer9Inn": "5.93",
+            "hitsPer9Inn": "6.59",
+            "runsScoredPer9": "4.61",
+            "homeRunsPer9": "1.05",
+            "inheritedRunners": 39,
+            "inheritedRunnersScored": 9,
+            "catchersInterference": 0,
+            "sacBunts": 0,
+            "sacFlies": 2
+          },
+          "team": {
+            "id": 113,
+            "name": "Cincinnati Reds",
+            "link": "/api/v1/teams/113"
+          },
+          "player": {
+            "id": 605130,
+            "fullName": "Scott Barlow",
+            "link": "/api/v1/people/605130"
+          },
+          "league": {
+            "id": 104,
+            "name": "National League",
+            "link": "/api/v1/league/104"
+          },
+          "sport": {
+            "id": 1,
+            "link": "/api/v1/sports/1",
+            "abbreviation": "MLB"
+          },
+          "gameType": "R"
+        }
+      ]
+    }
+  ]
+}
