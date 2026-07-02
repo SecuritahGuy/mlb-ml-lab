@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -41,7 +41,7 @@ class TestNwsWeather:
         assert ROOF_TYPES[2397] == "dome"
 
     def test_indoor_weather(self):
-        result = NwsWeather._indoor_weather()
+        result = NwsWeather._indoor_weather()  # pylint: disable=protected-access
         assert result["temp"] == 72
         assert result["precip_pct"] == 0
         assert result["conditions"] == "Indoor"
@@ -64,7 +64,7 @@ class TestNwsWeather:
             "probabilityOfPrecipitation": {"value": 20},
             "shortForecast": "Partly Cloudy",
         }
-        result = NwsWeather._parse_period(period, source="forecast")
+        result = NwsWeather._parse_period(period, source="forecast")  # pylint: disable=protected-access
         assert result["temp"] == 75
         assert result["wind_speed"] == "10 mph"
         assert result["wind_direction"] == "SW"
@@ -79,7 +79,7 @@ class TestNwsWeather:
             "windDirection": "N",
             "shortForecast": "Clear",
         }
-        result = NwsWeather._parse_period(period, source="forecast")
+        result = NwsWeather._parse_period(period, source="forecast")  # pylint: disable=protected-access
         assert result["precip_pct"] is None
 
     def test_closest_period_returns_nearest(self):
@@ -89,7 +89,7 @@ class TestNwsWeather:
             {"startTime": "2025-04-01T16:00:00+00:00", "temperature": 70},
         ]
         target = datetime(2025, 4, 1, 13, 30)
-        best = NwsWeather._closest_period(periods, target)
+        best = NwsWeather._closest_period(periods, target)  # pylint: disable=protected-access
         assert best["temperature"] == 65
 
     def test_closest_period_exact_match(self):
@@ -98,20 +98,20 @@ class TestNwsWeather:
             {"startTime": "2025-04-01T14:00:00+00:00", "temperature": 65},
         ]
         target = datetime(2025, 4, 1, 14, 0)
-        best = NwsWeather._closest_period(periods, target)
+        best = NwsWeather._closest_period(periods, target)  # pylint: disable=protected-access
         assert best["temperature"] == 65
 
     def test_closest_period_empty_returns_first(self):
         periods = [{"startTime": "2025-04-01T12:00:00+00:00"}]
         target = datetime(2025, 4, 1, 0, 0)
-        best = NwsWeather._closest_period(periods, target)
+        best = NwsWeather._closest_period(periods, target)  # pylint: disable=protected-access
         assert best is not None
 
     def test_unknown_venue_returns_empty(self):
         nws = NwsWeather()
         try:
             result = nws.forecast(99999)
-            assert result == {}
+            assert not result
         finally:
             nws.close()
 
@@ -119,8 +119,8 @@ class TestNwsWeather:
         nws = NwsWeather()
         try:
             # Force a grid lookup that won't hit the API
-            nws._grid_cache[1] = {"grid_id": "TEST"}
-            grid = nws._get_grid(1)
+            nws._grid_cache[1] = {"grid_id": "TEST"}  # pylint: disable=protected-access
+            grid = nws._get_grid(1)  # pylint: disable=protected-access
             assert grid["grid_id"] == "TEST"
         finally:
             nws.close()
@@ -144,7 +144,6 @@ class TestNwsWeatherLive:
     def test_live_forecast_at_future_time(self):
         nws = NwsWeather()
         try:
-            from datetime import timedelta
             future = datetime.now() + timedelta(hours=6)
             result = nws.forecast(1, target_time=future)
             assert result["temp"] is not None
@@ -154,7 +153,6 @@ class TestNwsWeatherLive:
     def test_live_observation_falls_back_to_forecast(self):
         nws = NwsWeather()
         try:
-            from datetime import timedelta
             past = datetime.now() - timedelta(days=3)
             result = nws.observation(1, past)
             assert result["temp"] is not None

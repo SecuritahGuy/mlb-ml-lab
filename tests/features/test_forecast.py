@@ -12,23 +12,23 @@ from mibl.features.forecast import WeatherForecastFeatures
 
 
 def _log(**kw: Any) -> PlayerGameLog:
-    defaults: dict[str, Any] = dict(
-        player_id=1,
-        player_name="A",
-        team_id=108,
-        opponent_id=145,
-        date="2025-04-01",
-        game_pk=1000,
-        is_home=True,
-        is_win=True,
-        game_type="R",
-        season="2025",
-        hits=1,
-        at_bats=4,
-        plate_appearances=4,
-        walks=0,
-        strikeouts=1,
-    )
+    defaults: dict[str, Any] = {
+        "player_id": 1,
+        "player_name": "A",
+        "team_id": 108,
+        "opponent_id": 145,
+        "date": "2025-04-01",
+        "game_pk": 1000,
+        "is_home": True,
+        "is_win": True,
+        "game_type": "R",
+        "season": "2025",
+        "hits": 1,
+        "at_bats": 4,
+        "plate_appearances": 4,
+        "walks": 0,
+        "strikeouts": 1,
+    }
     defaults.update(kw)
     return PlayerGameLog(**defaults)
 

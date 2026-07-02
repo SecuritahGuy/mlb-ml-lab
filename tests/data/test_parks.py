@@ -1,3 +1,4 @@
+import httpx
 import pytest
 
 from mibl.data.parks import ParkFactors, _FALLBACK
@@ -39,21 +40,19 @@ class TestParkFactors:
     def test_season_caching(self):
         pf = ParkFactors()
         try:
-            pf._cache[9999] = {42: {"wOBA": 123.0}}
+            pf._cache[9999] = {42: {"wOBA": 123.0}}  # pylint: disable=protected-access
             assert pf.factor(42, season=9999) == 1.23
         finally:
             pf.close()
 
     def test_savant_json_extraction(self):
         """Verify we can parse the JS variable from a real Savant page."""
-        import httpx
-
         resp = httpx.get(
             "https://baseballsavant.mlb.com/leaderboard/statcast-park-factors"
             "?type=year&year=2025&batSide=&stat=index_wOBA"
             "&condition=All&rolling=3&parks=mlb"
         )
-        raw = ParkFactors._extract_json(resp.text)
+        raw = ParkFactors._extract_json(resp.text)  # pylint: disable=protected-access
         assert raw is not None
         assert len(raw) >= 20
         keys = {k for entry in raw for k in entry}
@@ -66,7 +65,7 @@ class TestParkFactorsLive:
     def test_fetches_30_venues_for_2024(self):
         pf = ParkFactors()
         try:
-            data = pf._for_season(2024)
+            data = pf._for_season(2024)  # pylint: disable=protected-access
             # 2024 should have all 30 venues (before A's relocation changes)
             assert len(data) >= 28
         finally:

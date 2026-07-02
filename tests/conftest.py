@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from mibl.data.client import MlbClient
@@ -82,16 +83,20 @@ def expected_stats_data() -> list[dict[str, str]]:
 @pytest.fixture
 def client_with_fixtures(tmp_path) -> MlbClient:
     """MlbClient with fixtures pre-loaded into its cache."""
+    # pylint: disable=protected-access
     cache_dir = tmp_path / "cache"
     client = MlbClient(cache_dir=str(cache_dir), cache_ttl=86400)
 
     seeds = {
         "/teams?sportId=1": "teams.json",
         "/teams/108/roster?season=2025&rosterType=40Man": "angels_roster_2025.json",
-        "/people/545361/stats?stats=gameLog&group=hitting&season=2025": "trout_gamelog_2025.json",
+        "/people/545361/stats?stats=gameLog&group=hitting&season=2025":
+            "trout_gamelog_2025.json",
         "/game/778554/feed/live?": None,
-        "savant:/leaderboard/statcast?csv=true&min=q&type=batter&year=2025": "statcast_batters_2025.csv",
-        "savant:/leaderboard/expected_statistics?csv=true&min=q&type=batter&year=2025": "expected_stats_2025.csv",
+        "savant:/leaderboard/statcast?csv=true&min=q&type=batter&year=2025":
+            "statcast_batters_2025.csv",
+        "savant:/leaderboard/expected_statistics?csv=true&min=q&type=batter&year=2025":
+            "expected_stats_2025.csv",
     }
 
     for cache_key, fixture_name in seeds.items():
@@ -103,8 +108,6 @@ def client_with_fixtures(tmp_path) -> MlbClient:
             client._cache.set(cache_key, load_csv(fixture_name))
 
     # Seed schedule from live API (one-time)
-    import httpx
-
     resp = httpx.get(
         "https://statsapi.mlb.com/api/v1/schedule",
         params={"sportId": 1, "season": 2025, "gameType": "R"},

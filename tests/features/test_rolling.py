@@ -78,7 +78,7 @@ class TestRollingPlateAppearances:
         assert p2_rows[-1]["avg_pa_last_5"] is None
 
 
-class TestRollingBABIP:
+class TestRollingBABIP:  # pylint: disable=too-few-public-methods
     def test_babip_computed(self):
         logs = _make_logs()
         rows = RollingBABIP(window=3).extract(game_logs=logs)

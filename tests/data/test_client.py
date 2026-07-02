@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from mibl.data.client import MlbClient
-from mibl.data.schemas import PlayerGameLog, PlayerDetail, VenueInfo, StandingRecord
+from mibl.data.schemas import BoxscorePlayer, PlayerGameLog, PlayerDetail, VenueInfo, StandingRecord
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -24,7 +24,7 @@ class TestMlbClientUnit:
         cache_dir = tmp_path / "cache"
         client = MlbClient(cache_dir=str(cache_dir), cache_ttl=86400)
         for cache_key, fixture_name in seeds.items():
-            client._cache.set(cache_key, _load_json(fixture_name))
+            client._cache.set(cache_key, _load_json(fixture_name))  # pylint: disable=protected-access
         return client
 
     # --- Existing tests ---
@@ -225,7 +225,6 @@ class TestMlbClientUnit:
             assert "stats" in p
             assert "position" in p
 
-            from mibl.data.schemas import BoxscorePlayer
             bp = BoxscorePlayer.from_dict(pid, p)
             assert bp.player_id > 0
             assert bp.hits >= 0

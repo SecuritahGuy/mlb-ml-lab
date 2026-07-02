@@ -1,7 +1,7 @@
 from mibl.data.schemas import PlayerGameLog, RosterPlayer, TeamInfo
 
 
-class TestTeamInfo:
+class TestTeamInfo:  # pylint: disable=too-few-public-methods
     def test_from_dict(self, teams_data):
         raw = teams_data["teams"][0]
         team = TeamInfo.from_dict(raw)
@@ -10,7 +10,7 @@ class TestTeamInfo:
         assert team.abbreviation == raw["abbreviation"]
 
 
-class TestRosterPlayer:
+class TestRosterPlayer:  # pylint: disable=too-few-public-methods
     def test_from_dict(self, roster_data):
         raw = roster_data["roster"][0]
         player = RosterPlayer.from_dict(raw, team_id=108)

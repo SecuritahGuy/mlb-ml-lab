@@ -3,12 +3,12 @@ from mibl.features.targets import make_targets
 
 
 def _log(hits: int, **kw) -> PlayerGameLog:
-    defaults = dict(
-        player_id=1, player_name="A", team_id=108, opponent_id=145,
-        date="2025-04-01", game_pk=1000, is_home=True, is_win=True,
-        game_type="R", season="2025",
-        at_bats=4, plate_appearances=4,
-    )
+    defaults = {
+        "player_id": 1, "player_name": "A", "team_id": 108, "opponent_id": 145,
+        "date": "2025-04-01", "game_pk": 1000, "is_home": True, "is_win": True,
+        "game_type": "R", "season": "2025",
+        "at_bats": 4, "plate_appearances": 4,
+    }
     defaults.update(kw)
     return PlayerGameLog(hits=hits, **defaults)
 

@@ -8,12 +8,12 @@ from mibl.features.context import (
 
 
 def _log(**kwargs) -> PlayerGameLog:
-    defaults = dict(
-        player_id=1, player_name="A", team_id=108, opponent_id=145,
-        date="2025-04-01", game_pk=1000, is_home=True, is_win=True,
-        game_type="R", season="2025",
-        hits=0, at_bats=4, plate_appearances=4,
-    )
+    defaults = {
+        "player_id": 1, "player_name": "A", "team_id": 108, "opponent_id": 145,
+        "date": "2025-04-01", "game_pk": 1000, "is_home": True, "is_win": True,
+        "game_type": "R", "season": "2025",
+        "hits": 0, "at_bats": 4, "plate_appearances": 4,
+    }
     defaults.update(kwargs)
     return PlayerGameLog(**defaults)
 
@@ -111,13 +111,13 @@ class TestParkFactorFeatures:
             {"id": 108, "venue": {"id": 1}},
             {"id": 145, "venue": {"id": 4}},
         ]
-        mapping = ParkFactorFeatures._resolve_venue_map(teams)
+        mapping = ParkFactorFeatures._resolve_venue_map(teams)  # pylint: disable=protected-access
         assert mapping[108] == 1
         assert mapping[145] == 4
 
     def test_resolve_venue_map_empty_for_no_teams(self):
-        assert ParkFactorFeatures._resolve_venue_map(None) == {}
-        assert ParkFactorFeatures._resolve_venue_map([]) == {}
+        assert not ParkFactorFeatures._resolve_venue_map(None)  # pylint: disable=protected-access
+        assert not ParkFactorFeatures._resolve_venue_map([])  # pylint: disable=protected-access
 
 
 class TestWeatherFeatures:
