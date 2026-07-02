@@ -41,14 +41,14 @@ Build thin, testable wrappers around the official public MLB Stats API at `stats
 
 **Architecture**: Feature engineering lives in `src/mlb_ml_lab/features/` as part of the installable package. Each extractor is a registered `FeatureExtractor` subclass; the assembler discovers them via the registry. Optional data sources (`teams`, `game_contexts`, `opponent_pitching`, `statcast_batters`, `expected_stats`) are passed through kwargs and extractors silently default to None/1.0 when absent.  The `pipeline/` directory at project root is reserved for model training and prediction.
 
-## Phase 3: Model Training
+## Phase 3: Model Training (baseline complete)
 
-- [ ] `src/mlb_ml_lab/models/train.py` — binary classifiers for two targets:
-  - `hits_over_0_5` (~45-55% base rate)
-  - `hits_over_1_5` (~20-30% base rate — class imbalance expected)
-- [ ] Candidate models: `LogisticRegression` (baseline), `GradientBoostingClassifier`, `XGBoost`
-- [ ] `src/mlb_ml_lab/models/evaluate.py` — metrics: accuracy, log-loss, ROC-AUC, calibration curve, expected profit at market odds
-- [ ] **Walk-forward validation** (not random split) — time-series-aware train/test splits to prevent lookahead bias
+- [x] `src/mlb_ml_lab/models/train.py` — `WalkForwardSplit` (expanding window) + `train_baselines()` for LogisticRegression and XGBoost
+- [x] `src/mlb_ml_lab/models/evaluate.py` — metrics: accuracy, log-loss, ROC-AUC, Brier score
+- [x] Walk-forward validation (expanding window, not random split)
+- [ ] End-to-end pipeline: fetch real data for a team/season → featurize → train → evaluate
+- [ ] Hyperparameter tuning (grid/random search inside walk-forward)
+- [ ] Calibration curve + expected profit at market odds
 
 ## Phase 4: Backtesting & Odds Integration
 
