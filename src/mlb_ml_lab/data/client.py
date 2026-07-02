@@ -119,6 +119,7 @@ class MlbClient:
         venue = gi.get("venue", {}) or {}
         game_info = gi.get("game", {}) or {}
         datetime_info = gi.get("datetime", {}) or {}
+        probable = gi.get("probablePitchers", {}) or {}
 
         bs = ld.get("boxscore", {}) or {}
         teams_bs = bs.get("teams", {}) or {}
@@ -133,7 +134,7 @@ class MlbClient:
             "game_pk": game_pk,
             "game_date": game_info.get("date"),
             "game_datetime": datetime_info.get("dateTime"),
-            "day_night": game_info.get("dayNight"),
+            "day_night": datetime_info.get("dayNight"),
             "venue_id": venue.get("id"),
             "venue_name": venue.get("name"),
             "weather_condition": weather.get("condition"),
@@ -148,6 +149,8 @@ class MlbClient:
             "home_hits": home.get("hits"),
             "away_hits": away.get("hits"),
             "status": game_info.get("status", {}).get("detailedState"),
+            "home_probable_pitcher_id": (probable.get("home") or {}).get("id"),
+            "away_probable_pitcher_id": (probable.get("away") or {}).get("id"),
         }
 
     # ------------------------------------------------------------------

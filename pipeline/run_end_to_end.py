@@ -101,26 +101,48 @@ def fetch_player_details(
 
 
 def fetch_prev_season_stats(
-    client: MlbClient, player_ids: list[int]
+    client: MlbClient, player_ids: list[int], group: str = "hitting"
 ) -> dict[int, dict[str, Any]]:
     prev = SEASON - 1
     stats: dict[int, dict[str, Any]] = {}
     for pid in player_ids:
         try:
-            stats[pid] = client.get_player_season_stats(pid, season=prev)
+            stats[pid] = client.get_player_season_stats(pid, season=prev, group=group)
         except Exception:  # pylint: disable=broad-exception-caught
             stats[pid] = {}
     return stats
 
 
+def collect_pitcher_ids(game_contexts: dict[int, dict[str, Any]]) -> list[int]:
+    seen: set[int] = set()
+    for ctx in game_contexts.values():
+        hid = ctx.get("home_probable_pitcher_id")
+        aid = ctx.get("away_probable_pitcher_id")
+        if hid:
+            seen.add(hid)
+        if aid:
+            seen.add(aid)
+    return list(seen)
+
+
+def fetch_pitcher_data(
+    client: MlbClient, game_contexts: dict[int, dict[str, Any]]
+) -> tuple[dict[int, dict[str, Any]], dict[int, dict[str, Any]]]:
+    pitcher_ids = collect_pitcher_ids(game_contexts)
+    print(f"  {len(pitcher_ids)} unique pitchers")
+    details = fetch_player_details(client, pitcher_ids)
+    print(f"  {len(details)} pitcher details")
+    stats = fetch_prev_season_stats(client, pitcher_ids, group="pitching")
+    print(f"  {len(stats)} pitcher stat sets")
+    return details, stats
+
+
 def main() -> None:
     client = MlbClient()
 
-    print(f"Fetching roster for team {TEAM_ID} ({SEASON})...")
     players = fetch_roster_players(client)
-    print(f"  Found {len(players)} position players")
+    print(f"  Found {len(players)} position players for team {TEAM_ID}")
     player_ids = [p["person"]["id"] for p in players]
-    print(f"  Player IDs: {player_ids}")
 
     print("Fetching game logs...")
     game_logs = fetch_game_logs(client, player_ids)
@@ -142,6 +164,9 @@ def main() -> None:
     prev_season_stats = fetch_prev_season_stats(client, player_ids)
     print(f"  {len(prev_season_stats)} players")
 
+    pitcher_details, pitcher_stats = fetch_pitcher_data(client, game_contexts)
+    player_details.update(pitcher_details)
+
     print("Fetching teams list...")
     teams = client.get_teams()
     print(f"  {len(teams)} teams")
@@ -156,6 +181,7 @@ def main() -> None:
             "opponent_pitching": opponent_pitching,
             "player_details": player_details,
             "prev_season_stats": prev_season_stats,
+            "pitcher_stats": pitcher_stats,
         },
     )
     print(f"  {len(feature_matrix)} feature rows")

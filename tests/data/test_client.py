@@ -73,6 +73,10 @@ class TestMlbClientUnit:
         assert ctx["weather_temp"] == "54"
         assert ctx["home_team_name"] == "Chicago White Sox"
         assert ctx["away_team_name"] == "Los Angeles Angels"
+        assert ctx["day_night"] == "day"
+        assert ctx["game_datetime"] == "2025-03-27T20:10:00Z"
+        assert ctx["home_probable_pitcher_id"] == 680732
+        assert ctx["away_probable_pitcher_id"] == 579328
 
     def test_get_statcast_batters(self, client_with_fixtures):
         rows = client_with_fixtures.get_statcast_batters(2025)
