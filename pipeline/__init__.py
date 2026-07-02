@@ -1,5 +1,6 @@
 # Import all feature extractors so they register themselves
 import pipeline.context  # noqa: F401
+import pipeline.forecast  # noqa: F401
 import pipeline.matchup  # noqa: F401
 import pipeline.rolling  # noqa: F401
 import pipeline.statcast  # noqa: F401

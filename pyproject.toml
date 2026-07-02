@@ -3,6 +3,20 @@ name = "mibl"
 version = "0.1.0"
 description = "MLB hit over/under prediction models"
 authors = ["Tim Hollingsworth"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/timhollingsworth/mibl"
+keywords = ["mlb", "baseball", "prediction", "sports-betting", "machine-learning"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment :: Simulation",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 [tool.poetry.dependencies]
 python = ">=3.12"

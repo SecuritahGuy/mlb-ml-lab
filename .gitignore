@@ -9,8 +9,8 @@ build/
 .venv/
 .venv_*
 
-# Data
-data/
+# Data (top-level only — not src/mibl/data/)
+/data/
 
 # Notebooks
 experiments/
