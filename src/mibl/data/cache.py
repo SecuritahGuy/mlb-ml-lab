@@ -21,7 +21,7 @@ class DiskCache:
     def get(self, key: str) -> Any | None:
         path = self._path(key)
         try:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 entry = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             return None
@@ -39,7 +39,7 @@ class DiskCache:
         }
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(entry, f)
 
     def clear(self) -> None:

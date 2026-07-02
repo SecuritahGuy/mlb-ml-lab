@@ -1,0 +1,17 @@
+[MAIN]
+# Our code style uses short docstrings, lots of typed fields, and
+# intentionally duplicated utility functions across independent modules.
+disable=
+    C0114,   # missing-module-docstring
+    C0115,   # missing-class-docstring
+    C0116,   # missing-function-docstring
+    duplicate-code,
+    R0902,   # too-many-instance-attributes (dataclasses with lots of fields)
+    R0913,   # too-many-arguments
+    R0914,   # too-many-locals
+    R0917,   # too-many-positional-arguments
+    W0221,   # arguments-differ (extract(**kwargs) pattern is intentional)
+    R0801,   # duplicate-code (alias for duplicate-code)
+
+[FORMAT]
+max-line-length=100

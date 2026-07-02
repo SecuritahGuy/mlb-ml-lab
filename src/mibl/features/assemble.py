@@ -55,7 +55,7 @@ def build_feature_matrix(
     registry = get_registry()
     all_feature_rows: list[dict[str, Any]] = []
 
-    for name, extractor_cls in registry.items():
+    for _, extractor_cls in registry.items():
         extractor = extractor_cls()
         rows = extractor.extract(**kwargs)
         all_feature_rows.extend(rows)
@@ -80,6 +80,6 @@ def describe_features() -> list[FeatureMeta]:
     """Return metadata for all registered features."""
     registry = get_registry()
     metas: list[FeatureMeta] = []
-    for name, cls in registry.items():
+    for _, cls in registry.items():
         metas.extend(cls().features)
     return metas

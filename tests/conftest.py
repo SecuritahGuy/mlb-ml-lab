@@ -14,13 +14,13 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def load_json(name: str) -> dict[str, Any]:
-    with open(FIXTURES / name) as f:
+    with open(FIXTURES / name, encoding="utf-8") as f:
         return json.load(f)
 
 
 def load_csv(name: str) -> list[dict[str, str]]:
-    with open(FIXTURES / name) as f:
-        text = f.read().lstrip("\ufeff")
+    with open(FIXTURES / name, encoding="utf-8-sig") as f:
+        text = f.read()
     return list(csv.DictReader(io.StringIO(text)))
 
 

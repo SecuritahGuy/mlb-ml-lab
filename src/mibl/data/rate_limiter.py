@@ -28,7 +28,7 @@ class TokenBucket:
                 sleep_for = (tokens - self._tokens) / self._refill_rate
                 self._lock.release()
                 time.sleep(sleep_for)
-                self._lock.acquire()
+                self._lock.acquire()  # pylint: disable=consider-using-with
                 self._refill()
             self._tokens -= tokens
 

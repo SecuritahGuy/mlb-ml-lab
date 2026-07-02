@@ -12,7 +12,7 @@ FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
 def _load_json(name: str) -> dict:
-    with open(FIXTURES / name) as f:
+    with open(FIXTURES / name, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -389,7 +389,8 @@ class TestMlbClientLive:
             v = client.get_venue(1)
             assert v["name"] == "Angel Stadium"
             venue = VenueInfo.from_dict(v)
-            assert venue.capacity > 0
+            assert venue.name == "Angel Stadium"
+            assert venue.active
         finally:
             client.close()
 

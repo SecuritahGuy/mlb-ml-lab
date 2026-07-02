@@ -234,7 +234,7 @@ class BoxscorePlayer:
     ops: str = ""
 
     @classmethod
-    def from_dict(cls, pid: str, d: dict[str, Any]) -> BoxscorePlayer:
+    def from_dict(cls, _pid: str, d: dict[str, Any]) -> BoxscorePlayer:
         person = d.get("person", {}) or {}
         pos = d.get("position", {}) or {}
         stats = d.get("stats", {}) or {}

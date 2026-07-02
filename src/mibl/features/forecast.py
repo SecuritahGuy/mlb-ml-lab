@@ -18,6 +18,7 @@ Usage from ``build_feature_matrix``::
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from mibl.data.weather import INDOOR_VENUES, NwsWeather
@@ -103,15 +104,13 @@ class WeatherForecastFeatures(FeatureExtractor):
                     }
                 else:
                     try:
-                        from datetime import datetime
-
                         dt = datetime.fromisoformat(game_datetime_str)
                         result = nws.forecast(venue_id, target_time=dt)
                         if result:
                             forecast = result
                     except (ValueError, TypeError):
                         pass
-                    except Exception:
+                    except Exception:  # pylint: disable=broad-exception-caught
                         pass
 
             rows.append({

@@ -19,7 +19,7 @@ FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
 def _load(name: str) -> dict:
-    with open(FIXTURES / name) as f:
+    with open(FIXTURES / name, encoding="utf-8") as f:
         return json.load(f)
 
 
