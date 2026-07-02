@@ -52,7 +52,7 @@ jobs:
     permissions:
       id-token: write
     environment:
-      name: pypi
+      name: mlb-ml-lab-environment
       url: https://pypi.org/project/mlb-ml-lab/${{ github.event.release.name }}
     steps:
       - name: Retrieve release distributions
