@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
 import numpy as np
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
 
@@ -97,7 +99,7 @@ def _feature_columns(
     rows: list[dict[str, Any]],
     exclude: set[str] | None = None,
 ) -> list[str]:
-    """Return sorted list of feature column names."""
+    """Return sorted list of numeric feature column names."""
     exclude_set = {
         "player_id",
         "game_pk",
@@ -105,10 +107,25 @@ def _feature_columns(
         "hits",
         *(exclude or set()),
     }
-    cols: set[str] = set()
+    candidate: set[str] = set()
     for row in rows:
-        cols.update(k for k in row if k not in exclude_set)
-    return sorted(cols)
+        candidate.update(k for k in row if k not in exclude_set)
+
+    cols: list[str] = []
+    for col in sorted(candidate):
+        vals = [r.get(col) for r in rows]
+        numeric = True
+        for v in vals:
+            if v is None:
+                continue
+            try:
+                float(v)
+            except (TypeError, ValueError):
+                numeric = False
+                break
+        if numeric:
+            cols.append(col)
+    return cols
 
 
 def train_baselines(
@@ -164,6 +181,12 @@ def train_baselines(
     y_all = np.array(
         [row[target_col] for row in merged], dtype=np.int32
     )
+
+    imputer = SimpleImputer(strategy="median")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=UserWarning)
+        x_all = imputer.fit_transform(x_all)
+    x_all = np.nan_to_num(x_all, nan=0.0)
 
     splitter = WalkForwardSplit(n_splits=n_splits)
     folds = splitter.split(dates)

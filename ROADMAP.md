@@ -46,7 +46,7 @@ Build thin, testable wrappers around the official public MLB Stats API at `stats
 - [x] `src/mlb_ml_lab/models/train.py` — `WalkForwardSplit` (expanding window) + `train_baselines()` for LogisticRegression and XGBoost
 - [x] `src/mlb_ml_lab/models/evaluate.py` — metrics: accuracy, log-loss, ROC-AUC, Brier score
 - [x] Walk-forward validation (expanding window, not random split)
-- [ ] End-to-end pipeline: fetch real data for a team/season → featurize → train → evaluate
+- [x] End-to-end pipeline (`pipeline/run_end_to_end.py`): fetch real MLB data → featurize → walk-forward train → print metrics
 - [ ] Hyperparameter tuning (grid/random search inside walk-forward)
 - [ ] Calibration curve + expected profit at market odds
 
