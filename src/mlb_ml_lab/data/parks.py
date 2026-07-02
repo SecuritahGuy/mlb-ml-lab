@@ -2,7 +2,7 @@
 
 Usage::
 
-    from mibl.data.parks import ParkFactors
+    from mlb_ml_lab.data.parks import ParkFactors
 
     pf = ParkFactors()
     coors_woba = pf.factor(19, "wOBA", season=2025)  # 1.12
@@ -21,7 +21,7 @@ from typing import Any
 
 import httpx
 
-from mibl.data.cache import DiskCache
+from mlb_ml_lab.data.cache import DiskCache
 
 logger = logging.getLogger(__name__)
 

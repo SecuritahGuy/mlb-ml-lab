@@ -1,5 +1,5 @@
-from mibl.data.schemas import PlayerGameLog
-from mibl.features.rolling import RollingHits, RollingPlateAppearances, RollingBABIP
+from mlb_ml_lab.data.schemas import PlayerGameLog
+from mlb_ml_lab.features.rolling import RollingHits, RollingPlateAppearances, RollingBABIP
 
 
 def _make_logs() -> list[PlayerGameLog]:

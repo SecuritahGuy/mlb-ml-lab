@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mibl.features.base import FeatureExtractor, FeatureMeta, register
+from mlb_ml_lab.features.base import FeatureExtractor, FeatureMeta, register
 
 
 @register

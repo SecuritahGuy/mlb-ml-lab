@@ -1,5 +1,5 @@
-from mibl.data.schemas import PlayerGameLog
-from mibl.features.targets import make_targets
+from mlb_ml_lab.data.schemas import PlayerGameLog
+from mlb_ml_lab.features.targets import make_targets
 
 
 def _log(hits: int, **kw) -> PlayerGameLog:

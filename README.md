@@ -1,7 +1,7 @@
-# mibl
+# mlb-ml-lab
 
-**M**LB **I**nning-**B**ased hit over/under prediction models — fetch, featurize, and predict
-whether MLB players will clear 0.5 and 1.5 hit thresholds.
+MLB prediction models — fetch player and team data, build feature matrices, train models,
+and evaluate hit over/under forecasts.
 
 ## Features
 
@@ -23,8 +23,8 @@ whether MLB players will clear 0.5 and 1.5 hit thresholds.
 
 ```bash
 # Clone the repo
-git clone https://github.com/timhollingsworth/mibl
-cd mibl
+git clone https://github.com/timhollingsworth/mlb-ml-lab
+cd mlb-ml-lab
 
 # Install with Poetry
 poetry install
@@ -37,7 +37,7 @@ Requires Python 3.12+.
 ### Fetch player game logs
 
 ```python
-from mibl import MlbClient
+from mlb_ml_lab import MlbClient
 
 client = MlbClient()
 
@@ -68,7 +68,7 @@ feed = client.get_game_context(778554)
 ### Build a feature matrix
 
 ```python
-from mibl import MlbClient, build_feature_matrix, describe_features, make_targets
+from mlb_ml_lab import MlbClient, build_feature_matrix, describe_features, make_targets
 
 client = MlbClient()
 
@@ -98,7 +98,7 @@ targets = make_targets(logs)
 
 ```python
 from datetime import datetime
-from mibl import NwsWeather
+from mlb_ml_lab import NwsWeather
 
 nws = NwsWeather()
 
@@ -111,7 +111,7 @@ forecast = nws.forecast(1, target_time=datetime(2025, 7, 4, 19, 7))
 ### Park factors
 
 ```python
-from mibl import ParkFactors
+from mlb_ml_lab import ParkFactors
 
 pf = ParkFactors()
 # Coors Field (venue_id=19) 2024 wOBA factor
@@ -122,9 +122,9 @@ print(factor)  # e.g. 1.11 (11% boost)
 ## Project Structure
 
 ```
-mibl/
+mlb-ml-lab/
 ├── src/
-│   └── mibl/
+│   └── mlb_ml_lab/
 │       ├── data/               # Data layer (installable)
 │       │   ├── client.py       # MlbClient — MLB Stats API + Baseball Savant
 │       │   ├── schemas.py      # Typed dataclasses
@@ -175,10 +175,10 @@ poetry run ruff format .
 
 ### Adding a new feature extractor
 
-1. Create a new module in `src/mibl/features/` (e.g. `src/mibl/features/schedule.py`).
+1. Create a new module in `src/mlb_ml_lab/features/` (e.g. `src/mlb_ml_lab/features/schedule.py`).
 2. Subclass `FeatureExtractor`, implement `features` and `extract`.
 3. Decorate with `@register`.
-4. Import it in `src/mibl/features/__init__.py`.
+4. Import it in `src/mlb_ml_lab/features/__init__.py`.
 5. It will automatically be discovered by `build_feature_matrix()`.
 
 ## Data Sources

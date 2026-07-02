@@ -1,22 +1,19 @@
-"""mibl — MLB hit over/under prediction models."""
+"""MLB Stats API client, typed schemas, caching, and weather data."""
 
-from mibl.data import (
+from mlb_ml_lab.data.cache import DiskCache
+from mlb_ml_lab.data.client import MlbClient
+from mlb_ml_lab.data.parks import ParkFactors
+from mlb_ml_lab.data.rate_limiter import TokenBucket
+from mlb_ml_lab.data.schemas import (
     BoxscorePlayer,
-    DiskCache,
-    INDOOR_VENUES,
-    MlbClient,
-    NwsWeather,
-    ParkFactors,
     PlayerDetail,
     PlayerGameLog,
     RosterPlayer,
     StandingRecord,
     TeamInfo,
-    TokenBucket,
     VenueInfo,
 )
-
-from mibl.features import build_feature_matrix, describe_features, make_targets
+from mlb_ml_lab.data.weather import INDOOR_VENUES, NwsWeather
 
 __all__ = [
     "BoxscorePlayer",
@@ -32,7 +29,4 @@ __all__ = [
     "TeamInfo",
     "TokenBucket",
     "VenueInfo",
-    "build_feature_matrix",
-    "describe_features",
-    "make_targets",
 ]

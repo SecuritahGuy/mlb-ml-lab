@@ -18,4 +18,4 @@ jobs:
     - name: Install dependencies
       run: poetry install --no-interaction
     - name: Analysing the code with pylint
-      run: poetry run pylint src/mibl/ tests/ pipeline/
+      run: poetry run pylint src/mlb_ml_lab/ tests/ pipeline/

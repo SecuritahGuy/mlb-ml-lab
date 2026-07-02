@@ -7,8 +7,8 @@ from typing import Any
 
 import httpx
 
-from mibl.data.cache import DiskCache
-from mibl.data.rate_limiter import TokenBucket
+from mlb_ml_lab.data.cache import DiskCache
+from mlb_ml_lab.data.rate_limiter import TokenBucket
 
 logger = logging.getLogger(__name__)
 

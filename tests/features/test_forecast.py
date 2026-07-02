@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-from mibl.data.schemas import PlayerGameLog
-from mibl.data.weather import NwsWeather
-from mibl.features.assemble import build_feature_matrix, describe_features
-from mibl.features.forecast import WeatherForecastFeatures
+from mlb_ml_lab.data.schemas import PlayerGameLog
+from mlb_ml_lab.data.weather import NwsWeather
+from mlb_ml_lab.features.assemble import build_feature_matrix, describe_features
+from mlb_ml_lab.features.forecast import WeatherForecastFeatures
 
 
 def _log(**kw: Any) -> PlayerGameLog:

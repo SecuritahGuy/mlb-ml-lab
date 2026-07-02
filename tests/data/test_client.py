@@ -5,8 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from mibl.data.client import MlbClient
-from mibl.data.schemas import BoxscorePlayer, PlayerGameLog, PlayerDetail, VenueInfo, StandingRecord
+from mlb_ml_lab.data.client import MlbClient
+from mlb_ml_lab.data.schemas import (
+    BoxscorePlayer,
+    PlayerGameLog,
+    PlayerDetail,
+    VenueInfo,
+    StandingRecord,
+)
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 

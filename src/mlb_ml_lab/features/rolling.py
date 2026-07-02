@@ -9,9 +9,9 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from typing import Any
 
-from mibl.data.schemas import PlayerGameLog
+from mlb_ml_lab.data.schemas import PlayerGameLog
 
-from mibl.features.base import FeatureExtractor, FeatureMeta, register
+from mlb_ml_lab.features.base import FeatureExtractor, FeatureMeta, register
 
 
 @register

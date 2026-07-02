@@ -1,4 +1,4 @@
-# mibl — Roadmap
+# mlb-ml-lab — Roadmap
 
 Experimental models predicting MLB player hits over 0.5 and 1.5 thresholds.
 
@@ -6,16 +6,16 @@ Experimental models predicting MLB player hits over 0.5 and 1.5 thresholds.
 
 - [x] `git init`, `.gitignore` (Python, data, venvs)
 - [x] `pyproject.toml` via `poetry init`; dev deps: `pytest`, `ruff`, `httpx`
-- [x] `src/mibl/` package scaffold with `__init__.py`
+- [x] `src/mlb_ml_lab/` package scaffold with `__init__.py`
 - [x] `AGENTS.md` from existing template
 
 ## Phase 1: Data Layer (custom, no library dependencies)
 
 Build thin, testable wrappers around the official public MLB Stats API at `statsapi.mlb.com`. Reference `pybaseball` / `pybaseballstats` / `python-mlb-statsapi` for URL/endpoint patterns only — do not depend on them at runtime.
 
-- [x] `src/mibl/data/client.py` — `httpx`-based HTTP client configures base URL, handles rate limits, returns raw JSON
-- [x] `src/mibl/data/schemas.py` — typed dataclasses for player game logs, season stats, roster info
-- [x] `src/mibl/data/cache.py` — local JSON-on-disk cache in `data/` to avoid replaying API calls
+- [x] `src/mlb_ml_lab/data/client.py` — `httpx`-based HTTP client configures base URL, handles rate limits, returns raw JSON
+- [x] `src/mlb_ml_lab/data/schemas.py` — typed dataclasses for player game logs, season stats, roster info
+- [x] `src/mlb_ml_lab/data/cache.py` — local JSON-on-disk cache in `data/` to avoid replaying API calls
 - [x] Entrypoints to fetch:
   - Player game logs for a season (the core dataset)
   - Season-level batting stats
@@ -30,36 +30,36 @@ Build thin, testable wrappers around the official public MLB Stats API at `stats
 
 ## Phase 2: Feature Engineering (complete)
 
-- [x] `src/mibl/features/rolling.py` — rolling averages (L5, L10, L20) of hits, PA, BB/K rate, BABIP; no lookahead
-- [x] `src/mibl/features/matchup.py` — opponent team pitching features (ERA, K/9, WHIP, BAA, HR/9)
-- [x] `src/mibl/features/context.py` — home/away, rest days, park factors, weather (condition, temp, wind)
-- [x] `src/mibl/features/statcast.py` — advanced hitting metrics from Savant leaderboards (xBA, xwOBA, barrel %, exit velo, sweet-spot, FB/LD, GB)
-- [x] `src/mibl/features/forecast.py` — NWS weather forecast features (temp, wind, precip, conditions)
-- [x] `src/mibl/features/assemble.py` — ``build_feature_matrix()`` merges all extractors on (player_id, game_pk, date); ``describe_features()`` returns metadata
-- [x] `src/mibl/features/targets.py` — binary targets for hit thresholds (0.5 and 1.5)
+- [x] `src/mlb_ml_lab/features/rolling.py` — rolling averages (L5, L10, L20) of hits, PA, BB/K rate, BABIP; no lookahead
+- [x] `src/mlb_ml_lab/features/matchup.py` — opponent team pitching features (ERA, K/9, WHIP, BAA, HR/9)
+- [x] `src/mlb_ml_lab/features/context.py` — home/away, rest days, park factors, weather (condition, temp, wind)
+- [x] `src/mlb_ml_lab/features/statcast.py` — advanced hitting metrics from Savant leaderboards (xBA, xwOBA, barrel %, exit velo, sweet-spot, FB/LD, GB)
+- [x] `src/mlb_ml_lab/features/forecast.py` — NWS weather forecast features (temp, wind, precip, conditions)
+- [x] `src/mlb_ml_lab/features/assemble.py` — ``build_feature_matrix()`` merges all extractors on (player_id, game_pk, date); ``describe_features()`` returns metadata
+- [x] `src/mlb_ml_lab/features/targets.py` — binary targets for hit thresholds (0.5 and 1.5)
 - [x] Unit tests: 117 tests covering correctness, no lookahead, null handling, edge cases
 
-**Architecture**: Feature engineering lives in `src/mibl/features/` as part of the installable package. Each extractor is a registered `FeatureExtractor` subclass; the assembler discovers them via the registry. Optional data sources (`teams`, `game_contexts`, `opponent_pitching`, `statcast_batters`, `expected_stats`) are passed through kwargs and extractors silently default to None/1.0 when absent.  The `pipeline/` directory at project root is reserved for model training and prediction.
+**Architecture**: Feature engineering lives in `src/mlb_ml_lab/features/` as part of the installable package. Each extractor is a registered `FeatureExtractor` subclass; the assembler discovers them via the registry. Optional data sources (`teams`, `game_contexts`, `opponent_pitching`, `statcast_batters`, `expected_stats`) are passed through kwargs and extractors silently default to None/1.0 when absent.  The `pipeline/` directory at project root is reserved for model training and prediction.
 
 ## Phase 3: Model Training
 
-- [ ] `src/mibl/models/train.py` — binary classifiers for two targets:
+- [ ] `src/mlb_ml_lab/models/train.py` — binary classifiers for two targets:
   - `hits_over_0_5` (~45-55% base rate)
   - `hits_over_1_5` (~20-30% base rate — class imbalance expected)
 - [ ] Candidate models: `LogisticRegression` (baseline), `GradientBoostingClassifier`, `XGBoost`
-- [ ] `src/mibl/models/evaluate.py` — metrics: accuracy, log-loss, ROC-AUC, calibration curve, expected profit at market odds
+- [ ] `src/mlb_ml_lab/models/evaluate.py` — metrics: accuracy, log-loss, ROC-AUC, calibration curve, expected profit at market odds
 - [ ] **Walk-forward validation** (not random split) — time-series-aware train/test splits to prevent lookahead bias
 
 ## Phase 4: Backtesting & Odds Integration
 
 - [ ] Fetch real sportsbook lines (manually or via a free odds API) to evaluate +EV opportunities
-- [ ] `src/mibl/evaluation/backtest.py` — simulate betting over historical seasons: stake sizing, ROI, max drawdown
+- [ ] `src/mlb_ml_lab/evaluation/backtest.py` — simulate betting over historical seasons: stake sizing, ROI, max drawdown
 - [ ] Track model confidence calibration — are probabilities well-calibrated at decision thresholds?
 
 ## Phase 5: Iteration & Tooling
 
 - [ ] `experiments/` — Jupyter notebooks for exploration, feature ablation, error analysis
-- [ ] CLI entry point (`typer` or `argparse`) — `mibl fetch`, `mibl train`, `mibl predict`
+- [ ] CLI entry point (`typer` or `argparse`) — `mlb fetch`, `mlb train`, `mlb predict`
 - [ ] Scheduled data refresh (cron / GitHub Actions)
 - [ ] Optional: local LLM-powered analysis of mispredictions via LM Studio
 

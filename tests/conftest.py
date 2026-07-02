@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 import pytest
 
-from mibl.data.client import MlbClient
+from mlb_ml_lab.data.client import MlbClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

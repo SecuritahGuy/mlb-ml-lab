@@ -1,5 +1,5 @@
-from mibl.data.schemas import PlayerGameLog
-from mibl.features.matchup import TeamPitchingFeatures
+from mlb_ml_lab.data.schemas import PlayerGameLog
+from mlb_ml_lab.features.matchup import TeamPitchingFeatures
 
 
 def _log(**kwargs) -> PlayerGameLog:

@@ -1,6 +1,6 @@
 import time
 
-from mibl.data.rate_limiter import TokenBucket
+from mlb_ml_lab.data.rate_limiter import TokenBucket
 
 
 class TestTokenBucket:

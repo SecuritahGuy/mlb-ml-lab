@@ -1,4 +1,4 @@
-from mibl.data.schemas import PlayerGameLog, RosterPlayer, TeamInfo
+from mlb_ml_lab.data.schemas import PlayerGameLog, RosterPlayer, TeamInfo
 
 
 class TestTeamInfo:  # pylint: disable=too-few-public-methods

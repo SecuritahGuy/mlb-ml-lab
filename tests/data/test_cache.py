@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from mibl.data.cache import DiskCache
+from mlb_ml_lab.data.cache import DiskCache
 
 
 class TestDiskCache:

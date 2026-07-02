@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from mibl.data.parks import ParkFactors, _FALLBACK
+from mlb_ml_lab.data.parks import ParkFactors, _FALLBACK
 
 
 class TestParkFactors:

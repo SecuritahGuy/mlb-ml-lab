@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "mibl"
+name = "mlb-ml-lab"
 version = "0.1.0"
-description = "MLB hit over/under prediction models"
+description = "MLB prediction models and data tools"
 authors = ["Tim Hollingsworth"]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/timhollingsworth/mibl"
+repository = "https://github.com/timhollingsworth/mlb-ml-lab"
 keywords = ["mlb", "baseball", "prediction", "sports-betting", "machine-learning"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -17,7 +17,7 @@ classifiers = [
     "Topic :: Games/Entertainment :: Simulation",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-packages = [{include = "mibl", from = "src"}]
+packages = [{include = "mlb_ml_lab", from = "src"}]
 
 [tool.poetry.dependencies]
 python = ">=3.12"

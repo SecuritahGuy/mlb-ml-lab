@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from mibl.data.weather import (
+from mlb_ml_lab.data.weather import (
     NwsWeather,
     VENUE_COORDS,
     INDOOR_VENUES,

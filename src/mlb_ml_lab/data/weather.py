@@ -5,7 +5,7 @@ limit is ~30 req/s; we enforce 5 req/s via ``TokenBucket``.
 
 Usage::
 
-    from mibl.data.weather import NwsWeather
+    from mlb_ml_lab.data.weather import NwsWeather
 
     nws = NwsWeather()
     forecast = nws.forecast(venue_id=1, target_time=datetime.now())
@@ -20,12 +20,12 @@ from typing import Any
 
 import httpx
 
-from mibl.data.rate_limiter import TokenBucket
+from mlb_ml_lab.data.rate_limiter import TokenBucket
 
 logger = logging.getLogger(__name__)
 
 NWS_BASE = "https://api.weather.gov"
-_USER_AGENT = "mibl/0.1 (weather service; mlb hit prediction)"
+_USER_AGENT = "mlb-ml-lab/0.1 (weather service; mlb prediction)"
 
 # ---------------------------------------------------------------------------
 # Venue → lat/lon mapping (extracted from MLB Stats API game feeds)

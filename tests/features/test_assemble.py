@@ -1,5 +1,5 @@
-from mibl.data.schemas import PlayerGameLog
-from mibl.features.assemble import build_feature_matrix, describe_features
+from mlb_ml_lab.data.schemas import PlayerGameLog
+from mlb_ml_lab.features.assemble import build_feature_matrix, describe_features
 
 
 def _log(**kw) -> PlayerGameLog:

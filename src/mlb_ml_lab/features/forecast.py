@@ -21,9 +21,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from mibl.data.weather import INDOOR_VENUES, NwsWeather
+from mlb_ml_lab.data.weather import INDOOR_VENUES, NwsWeather
 
-from mibl.features.base import FeatureExtractor, FeatureMeta, register
+from mlb_ml_lab.features.base import FeatureExtractor, FeatureMeta, register
 
 
 @register

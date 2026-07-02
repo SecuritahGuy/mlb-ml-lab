@@ -1,5 +1,5 @@
-from mibl.data.schemas import PlayerGameLog
-from mibl.features.context import (
+from mlb_ml_lab.data.schemas import PlayerGameLog
+from mlb_ml_lab.features.context import (
     HomeAwayFeature,
     RestDaysFeature,
     ParkFactorFeatures,
