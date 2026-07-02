@@ -26,6 +26,18 @@ def _float_or_none(val: str | float | None) -> float | None:
         return None
 
 
+def _month_from_split(split: dict[str, Any]) -> int | None:
+    """Extract month number from a stat split dict."""
+    game = split.get("game", {}) or {}
+    date_str = game.get("date", "")
+    if not date_str:
+        return None
+    try:
+        return int(date_str.split("-")[1])
+    except (ValueError, IndexError):
+        return None
+
+
 def _str_avg_or_none(val: str | None) -> float | None:
     """Parse MLB batting-average string ('.260') to float (0.260)."""
     if val is None or val in ("", ".---", "----"):
@@ -225,6 +237,66 @@ class MlbClient:
             if not splits:
                 continue
             result[tid] = splits[0].get("stat", {})
+        return result
+
+    # ------------------------------------------------------------------
+    # Team Fielding Stats (for defense-quality features)
+    # ------------------------------------------------------------------
+
+    def get_team_fielding_stats(
+        self, team_ids: list[int], season: int
+    ) -> dict[int, dict[str, Any]]:
+        """Fetch season-level fielding stats for one or more teams.
+
+        Returns a dict mapping team_id → stat dict (errors, fieldingPct,
+        doublePlays, etc.).
+        """
+        result: dict[int, dict[str, Any]] = {}
+        for tid in team_ids:
+            data = self._get(
+                f"/teams/{tid}/stats",
+                params={"season": season, "group": "fielding", "stats": "season"},
+            )
+            stats = data.get("stats", [])
+            if not stats:
+                continue
+            splits = stats[0].get("splits", [])
+            if not splits:
+                continue
+            result[tid] = splits[0].get("stat", {})
+        return result
+
+    # ------------------------------------------------------------------
+    # Team Monthly Pitching Stats (reduces lookahead vs full-season)
+    # ------------------------------------------------------------------
+
+    def get_team_pitching_monthly_stats(
+        self, team_ids: list[int], season: int
+    ) -> dict[int, list[dict[str, Any]]]:
+        """Fetch per-month pitching splits for one or more teams.
+
+        Returns a dict mapping team_id → list of dicts, each with keys
+        ``month`` (int, 3-9) and ``stat`` (dict of pitching stats).
+        """
+        result: dict[int, list[dict[str, Any]]] = {}
+        for tid in team_ids:
+            data = self._get(
+                f"/teams/{tid}/stats",
+                params={
+                    "season": season, "group": "pitching",
+                    "stats": "seasonByMonth",
+                },
+            )
+            stats = data.get("stats", [])
+            if not stats:
+                continue
+            splits = stats[0].get("splits", [])
+            months: list[dict[str, Any]] = []
+            for sp in splits:
+                month_num = _month_from_split(sp)
+                if month_num is not None:
+                    months.append({"month": month_num, "stat": sp.get("stat", {})})
+            result[tid] = months
         return result
 
     # ------------------------------------------------------------------

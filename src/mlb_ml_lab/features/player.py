@@ -4,8 +4,9 @@ Uses pre-season or career data only — no within-season stats that would
 introduce lookahead bias.
 
 Requires ``player_details`` (dict of player_id → ``get_player()`` result)
-and/or ``prev_season_stats`` (dict of player_id → previous-season stat
-dict) in kwargs.  When absent, features default to None/0.
+and/or ``career_stats`` (dict of player_id → dict with weighted career
+averages for avg/obp/slg/ops/hr) in kwargs.  When absent, features
+default to None/0.
 """
 
 from __future__ import annotations
@@ -40,30 +41,30 @@ class PlayerQualityFeatures(FeatureExtractor):
                         source="player"),
             FeatureMeta(name="position_cat", description="0=IF, 1=OF, 2=C, 3=DH",
                         source="player"),
-            FeatureMeta(name="prev_season_avg",
-                        description="Previous-season batting average",
+            FeatureMeta(name="career_avg",
+                        description="Weighted career batting average (last 3 seasons)",
                         source="player"),
-            FeatureMeta(name="prev_season_obp",
-                        description="Previous-season on-base percentage",
+            FeatureMeta(name="career_obp",
+                        description="Weighted career on-base percentage",
                         source="player"),
-            FeatureMeta(name="prev_season_slg",
-                        description="Previous-season slugging percentage",
+            FeatureMeta(name="career_slg",
+                        description="Weighted career slugging percentage",
                         source="player"),
-            FeatureMeta(name="prev_season_ops",
-                        description="Previous-season OPS", source="player"),
-            FeatureMeta(name="prev_season_hr",
-                        description="Previous-season home runs", source="player"),
+            FeatureMeta(name="career_ops",
+                        description="Weighted career OPS", source="player"),
+            FeatureMeta(name="career_hr",
+                        description="Weighted career home runs", source="player"),
         ]
 
     def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
         player_details: dict[int, dict[str, Any]] | None = kwargs.get("player_details")
-        prev_stats: dict[int, dict[str, Any]] | None = kwargs.get("prev_season_stats")
+        career_stats: dict[int, dict[str, Any]] | None = kwargs.get("career_stats")
 
         rows: list[dict[str, Any]] = []
         for log in game_logs:
             pid = log.player_id
             detail = (player_details or {}).get(pid, {}) if player_details else {}
-            stats = (prev_stats or {}).get(pid, {}) if prev_stats else {}
+            stats = (career_stats or {}).get(pid, {}) if career_stats else {}
 
             game_dt = _parse_date(log.date)
 
@@ -80,11 +81,11 @@ class PlayerQualityFeatures(FeatureExtractor):
                 "throws_right": _throws_code(detail, "R"),
                 "throws_left": _throws_code(detail, "L"),
                 "position_cat": _position_category(detail),
-                "prev_season_avg": _str_avg_or_none(stats.get("avg")),
-                "prev_season_obp": _str_avg_or_none(stats.get("obp")),
-                "prev_season_slg": _str_avg_or_none(stats.get("slg")),
-                "prev_season_ops": _float_or_none(stats.get("ops")),
-                "prev_season_hr": _float_or_none(stats.get("homeRuns")),
+                "career_avg": _str_avg_or_none(stats.get("avg")),
+                "career_obp": _str_avg_or_none(stats.get("obp")),
+                "career_slg": _str_avg_or_none(stats.get("slg")),
+                "career_ops": _float_or_none(stats.get("ops")),
+                "career_hr": _float_or_none(stats.get("homeRuns")),
             })
         return rows
 

@@ -88,6 +88,81 @@ def fetch_opponent_pitching(
     return pitching
 
 
+def fetch_monthly_pitching(
+    client: MlbClient, game_logs: list[Any]
+) -> dict[int, list[dict[str, Any]]]:
+    opp_ids = list({log.opponent_id for log in game_logs})
+    try:
+        return client.get_team_pitching_monthly_stats(opp_ids, SEASON)
+    except Exception:  # pylint: disable=broad-exception-caught
+        return {}
+
+
+def fetch_team_fielding(
+    client: MlbClient, game_logs: list[Any]
+) -> dict[int, dict[str, Any]]:
+    opp_ids = list({log.opponent_id for log in game_logs})
+    try:
+        return client.get_team_fielding_stats(opp_ids, SEASON)
+    except Exception:  # pylint: disable=broad-exception-caught
+        return {}
+
+
+def fetch_league_stats(client: MlbClient) -> dict[str, float]:
+    """Compute league-wide avg/obp/slg/ops/runs for the season."""
+    try:
+        all_teams = client.get_teams()
+        all_ids = [t["id"] for t in all_teams]
+        hitting = client.get_team_hitting_stats(all_ids, SEASON)
+    except Exception:  # pylint: disable=broad-exception-caught
+        return {}
+
+    total_ab = 0
+    total_h = 0
+    total_bb = 0
+    total_1b = 0
+    total_2b = 0
+    total_3b = 0
+    total_hr = 0
+    total_r = 0
+    total_g = 0
+    for stat in hitting.values():
+        ab = int(stat.get("atBats", 0))
+        h = int(stat.get("hits", 0))
+        bb = int(stat.get("baseOnBalls", 0))
+        _2b = int(stat.get("doubles", 0))
+        _3b = int(stat.get("triples", 0))
+        hr = int(stat.get("homeRuns", 0))
+        r = int(stat.get("runs", 0))
+        g = int(stat.get("gamesPlayed", 0))
+        total_ab += ab
+        total_h += h
+        total_bb += bb
+        total_2b += _2b
+        total_3b += _3b
+        total_hr += hr
+        total_r += r
+        total_g += g
+        total_1b += h - _2b - _3b - hr
+
+    if total_ab == 0:
+        return {}
+
+    avg = round(total_h / total_ab, 3)
+    obp = round((total_h + total_bb) / (total_ab + total_bb), 3)
+    slg = round((total_1b + 2 * total_2b + 3 * total_3b + 4 * total_hr) / total_ab, 3)
+    ops = round(obp + slg, 3)
+    rpg = round(total_r / max(total_g, 1), 2)
+
+    return {
+        "avg": avg,
+        "obp": obp,
+        "slg": slg,
+        "ops": ops,
+        "runs_per_game": rpg,
+    }
+
+
 def fetch_player_details(
     client: MlbClient, player_ids: list[int]
 ) -> dict[int, dict[str, Any]]:
@@ -100,17 +175,69 @@ def fetch_player_details(
     return details
 
 
-def fetch_prev_season_stats(
-    client: MlbClient, player_ids: list[int], group: str = "hitting"
+def fetch_career_hitting_stats(
+    client: MlbClient, player_ids: list[int]
 ) -> dict[int, dict[str, Any]]:
-    prev = SEASON - 1
-    stats: dict[int, dict[str, Any]] = {}
+    """Weighted career average from last 3 seasons (50/30/20 weights)."""
+    weights = [0.5, 0.3, 0.2]
+    result: dict[int, dict[str, Any]] = {}
     for pid in player_ids:
-        try:
-            stats[pid] = client.get_player_season_stats(pid, season=prev, group=group)
-        except Exception:  # pylint: disable=broad-exception-caught
-            stats[pid] = {}
-    return stats
+        weighted: dict[str, float] = {}
+        total_w = 0.0
+        for i, w in enumerate(weights):
+            s = SEASON - 1 - i
+            try:
+                stats = client.get_player_season_stats(pid, season=s)
+            except Exception:  # pylint: disable=broad-exception-caught
+                continue
+            if not stats:
+                continue
+            for key in ("avg", "obp", "slg", "ops", "homeRuns"):
+                raw = stats.get(key)
+                if raw is not None:
+                    try:
+                        weighted[key] = weighted.get(key, 0.0) + float(raw) * w
+                    except (ValueError, TypeError):
+                        pass
+            total_w += w
+        if weighted and total_w > 0:
+            result[pid] = {k: round(v / total_w, 3) for k, v in weighted.items()}
+        else:
+            result[pid] = {}
+    return result
+
+
+def fetch_pitcher_career_stats(
+    client: MlbClient, pitcher_ids: list[int]
+) -> dict[int, dict[str, Any]]:
+    """Weighted career pitching average from last 3 seasons."""
+    weights = [0.5, 0.3, 0.2]
+    result: dict[int, dict[str, Any]] = {}
+    for pid in pitcher_ids:
+        weighted: dict[str, float] = {}
+        total_w = 0.0
+        for i, w in enumerate(weights):
+            s = SEASON - 1 - i
+            try:
+                stats = client.get_player_season_stats(pid, season=s, group="pitching")
+            except Exception:  # pylint: disable=broad-exception-caught
+                continue
+            if not stats:
+                continue
+            for key in ("era", "strikeoutsPer9Inn", "whip", "avg", "homeRunsPer9",
+                        "battersFaced", "inningsPitched"):
+                raw = stats.get(key)
+                if raw is not None:
+                    try:
+                        weighted[key] = weighted.get(key, 0.0) + float(raw) * w
+                    except (ValueError, TypeError):
+                        pass
+            total_w += w
+        if weighted and total_w > 0:
+            result[pid] = {k: round(v / total_w, 3) for k, v in weighted.items()}
+        else:
+            result[pid] = {}
+    return result
 
 
 def collect_pitcher_ids(game_contexts: dict[int, dict[str, Any]]) -> list[int]:
@@ -132,7 +259,7 @@ def fetch_pitcher_data(
     print(f"  {len(pitcher_ids)} unique pitchers")
     details = fetch_player_details(client, pitcher_ids)
     print(f"  {len(details)} pitcher details")
-    stats = fetch_prev_season_stats(client, pitcher_ids, group="pitching")
+    stats = fetch_pitcher_career_stats(client, pitcher_ids)
     print(f"  {len(stats)} pitcher stat sets")
     return details, stats
 
@@ -152,24 +279,18 @@ def main() -> None:
     game_contexts = build_game_contexts(client, game_logs)
     print(f"  {len(game_contexts)} unique game contexts")
 
-    print("Fetching opponent pitching stats...")
     opponent_pitching = fetch_opponent_pitching(client, game_logs)
-    print(f"  {len(opponent_pitching)} teams")
+    monthly_pitching = fetch_monthly_pitching(client, game_logs)
+    team_fielding = fetch_team_fielding(client, game_logs)
 
-    print("Fetching player details...")
     player_details = fetch_player_details(client, player_ids)
-    print(f"  {len(player_details)} players")
-
-    print("Fetching previous-season stats...")
-    prev_season_stats = fetch_prev_season_stats(client, player_ids)
-    print(f"  {len(prev_season_stats)} players")
+    career_stats = fetch_career_hitting_stats(client, player_ids)
 
     pitcher_details, pitcher_stats = fetch_pitcher_data(client, game_contexts)
     player_details.update(pitcher_details)
 
-    print("Fetching teams list...")
+    league_stats = fetch_league_stats(client)
     teams = client.get_teams()
-    print(f"  {len(teams)} teams")
 
     print("Building feature matrix...")
     feature_matrix = build_feature_matrix(
@@ -179,9 +300,12 @@ def main() -> None:
         extra_kwargs={
             "game_contexts": game_contexts,
             "opponent_pitching": opponent_pitching,
+            "monthly_pitching": monthly_pitching,
+            "team_fielding": team_fielding,
             "player_details": player_details,
-            "prev_season_stats": prev_season_stats,
+            "career_stats": career_stats,
             "pitcher_stats": pitcher_stats,
+            "league_stats": league_stats,
         },
     )
     print(f"  {len(feature_matrix)} feature rows")

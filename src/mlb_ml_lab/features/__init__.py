@@ -1,6 +1,7 @@
 # Import all feature extractors so they register themselves
 import mlb_ml_lab.features.context  # noqa: F401
 import mlb_ml_lab.features.forecast  # noqa: F401
+import mlb_ml_lab.features.league  # noqa: F401
 import mlb_ml_lab.features.matchup  # noqa: F401
 import mlb_ml_lab.features.pitching  # noqa: F401
 import mlb_ml_lab.features.player  # noqa: F401

@@ -1,13 +1,18 @@
 """Opponent matchup features: team-level pitching stats faced by each batter.
 
-Two feature extractors:
+Feature extractors:
 
 - ``TeamPitchingFeatures`` — uses season-level stats from
   ``opponent_pitching`` kwarg (simple but has lookahead bias).
 - ``RollingOpponentPitching`` — time-respecting, computes per-game
-  opponent rolling stats from the game logs passed to ``extract()``.
+  opponent rolling stats from the game logs.
   No lookahead because it aggregates only games before the current
   game date.
+- ``MonthlyTeamPitchingFeatures`` — uses month-level splits from
+  ``monthly_pitching`` kwarg.  For each game, aggregates only months
+  before the game date, reducing lookahead to at most one month.
+- ``TeamDefenseFeatures`` — opponent team defensive quality (errors,
+  fielding percentage, double plays) from ``team_fielding`` kwarg.
 """
 
 from __future__ import annotations
@@ -210,3 +215,152 @@ class _RollingPoint:
         self.ba_against = ba_against
         self.walk_rate = walk_rate
         self.sample_games = sample_games
+
+
+# ---------------------------------------------------------------------------
+# Monthly Pitching (reduced lookahead)
+# ---------------------------------------------------------------------------
+
+
+@register
+class MonthlyTeamPitchingFeatures(FeatureExtractor):
+    """Month-level opponent pitching stats filtered to months before game date.
+
+    Requires ``monthly_pitching`` in kwargs — dict mapping team_id → list
+    of dicts with keys ``month`` and ``stat`` (from
+    ``MlbClient.get_team_pitching_monthly_stats()``).
+    """
+
+    @property
+    def features(self) -> list[FeatureMeta]:
+        return [
+            FeatureMeta(name="mth_opp_era",
+                        description="Opponent ERA through month before game",
+                        source="matchup"),
+            FeatureMeta(name="mth_opp_k_per_9",
+                        description="Opponent K/9 through month before game",
+                        source="matchup"),
+            FeatureMeta(name="mth_opp_whip",
+                        description="Opponent WHIP through month before game",
+                        source="matchup"),
+            FeatureMeta(name="mth_opp_ba_against",
+                        description="Opponent BAA through month before game",
+                        source="matchup"),
+            FeatureMeta(name="mth_opp_games",
+                        description="Monthly splits aggregated",
+                        source="matchup"),
+        ]
+
+    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+        monthly: dict[int, list[dict[str, Any]]] | None = kwargs.get("monthly_pitching")
+
+        rows: list[dict[str, Any]] = []
+        for log in game_logs:
+            game_month = _month_from_date(log.date)
+            opp_months = (monthly or {}).get(log.opponent_id, []) if monthly else []
+
+            total_ip = 0.0
+            total_er = 0
+            total_so = 0
+            total_bb = 0
+            total_h = 0
+            count = 0
+            for m in opp_months:
+                if m["month"] < game_month:
+                    s = m["stat"]
+                    ip = _float_or_none(s.get("inningsPitched"))
+                    if ip is not None:
+                        total_ip += ip
+                        total_er += int(s.get("earnedRuns", 0))
+                        total_so += int(s.get("strikeOuts", 0))
+                        total_bb += int(s.get("baseOnBalls", 0))
+                        total_h += int(s.get("hits", 0))
+                        count += 1
+
+            era: float | None = None
+            k9: float | None = None
+            whip: float | None = None
+            baa: float | None = None
+            if total_ip > 0:
+                era = round(total_er * 9 / total_ip, 2)
+                k9 = round(total_so * 9 / total_ip, 2)
+                whip = round((total_bb + total_h) / total_ip, 3)
+                estimated_bf = total_h + total_so + total_bb + int(total_ip * 3)
+                if estimated_bf > 0:
+                    baa = _round3(total_h / estimated_bf)
+
+            rows.append({
+                "player_id": log.player_id,
+                "game_pk": log.game_pk,
+                "date": log.date,
+                "mth_opp_era": era,
+                "mth_opp_k_per_9": k9,
+                "mth_opp_whip": whip,
+                "mth_opp_ba_against": baa,
+                "mth_opp_games": count,
+            })
+        return rows
+
+
+# ---------------------------------------------------------------------------
+# Team Defense
+# ---------------------------------------------------------------------------
+
+
+@register
+class TeamDefenseFeatures(FeatureExtractor):
+    """Opponent team defensive quality features.
+
+    Requires ``team_fielding`` in kwargs — dict mapping team_id → stat
+    dict from ``MlbClient.get_team_fielding_stats()``.
+    """
+
+    @property
+    def features(self) -> list[FeatureMeta]:
+        return [
+            FeatureMeta(name="opp_fielding_pct",
+                        description="Opponent team fielding percentage",
+                        source="matchup"),
+            FeatureMeta(name="opp_errors",
+                        description="Opponent team total errors",
+                        source="matchup"),
+            FeatureMeta(name="opp_double_plays",
+                        description="Opponent team double plays turned",
+                        source="matchup"),
+        ]
+
+    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+        fielding: dict[int, dict[str, Any]] | None = kwargs.get("team_fielding")
+
+        rows: list[dict[str, Any]] = []
+        for log in game_logs:
+            fd = (fielding or {}).get(log.opponent_id, {}) if fielding else {}
+            rows.append({
+                "player_id": log.player_id,
+                "game_pk": log.game_pk,
+                "date": log.date,
+                "opp_fielding_pct": _float_or_none(fd.get("fieldingPct")),
+                "opp_errors": _float_or_none(fd.get("errors")),
+                "opp_double_plays": _float_or_none(fd.get("doublePlays")),
+            })
+        return rows
+
+
+def _month_from_date(date_str: str) -> int:
+    try:
+        return int(date_str.split("-")[1])
+    except (ValueError, IndexError):
+        return 99
+
+
+def _round3(val: float) -> float:
+    return round(val, 3)
+
+
+def _float_or_none(val: Any) -> float | None:
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None

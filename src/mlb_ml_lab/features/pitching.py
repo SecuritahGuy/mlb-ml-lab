@@ -36,6 +36,9 @@ class StartingPitcherFeatures(FeatureExtractor):
                         description="Opposing starter HR/9", source="pitching"),
             FeatureMeta(name="opp_pitcher_k_rate",
                         description="Opposing starter K per PA", source="pitching"),
+            FeatureMeta(name="opp_pitcher_bf_per_9",
+                        description="Opposing starter batters faced per 9 innings",
+                        source="pitching"),
             FeatureMeta(name="same_hand_advantage",
                         description="1 if batter and pitcher share handedness (pitcher advantage)",
                         source="pitching"),
@@ -77,6 +80,7 @@ class StartingPitcherFeatures(FeatureExtractor):
                 "opp_pitcher_ba_against": _str_avg_or_none(pstats.get("avg")),
                 "opp_pitcher_hr_per_9": _float_or_none(pstats.get("homeRunsPer9")),
                 "opp_pitcher_k_rate": _compute_k_rate(pstats),
+                "opp_pitcher_bf_per_9": _compute_bf_per_9(pstats),
                 "same_hand_advantage": platoon,
             })
         return rows
@@ -102,6 +106,14 @@ def _compute_k_rate(stats: dict[str, Any]) -> float | None:
     bf = _float_or_none(stats.get("battersFaced"))
     if so is not None and bf is not None and bf > 0:
         return round(so / bf, 3)
+    return None
+
+
+def _compute_bf_per_9(stats: dict[str, Any]) -> float | None:
+    bf = _float_or_none(stats.get("battersFaced"))
+    ip = _float_or_none(stats.get("inningsPitched"))
+    if bf is not None and ip is not None and ip > 0:
+        return round(bf / ip * 9, 1)
     return None
 
 
