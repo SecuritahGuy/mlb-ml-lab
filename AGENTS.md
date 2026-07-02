@@ -22,6 +22,7 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 | Run single test | `poetry run pytest tests/path/to/test_file.py::test_name -v` |
 | Run live API tests | `poetry run pytest --runslow` |
 | Run lint | `poetry run ruff check .` |
+| Run pylint | `poetry run pylint src/mibl/ tests/ pipeline/` |
 | Run formatter | `poetry run ruff format .` |
 | Typecheck | Not yet configured |
 

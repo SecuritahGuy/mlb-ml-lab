@@ -1,7 +1,6 @@
 [MAIN]
-# Resolve imports from the Poetry virtualenv when running pylint directly
-# (not via ``poetry run pylint``).  Falls back gracefully if .venv is absent.
-init-hook=import sys; from pathlib import Path; _v=Path(__file__).resolve().parent/".venv"/"lib";_s=sorted(_v.rglob("site-packages")) if _v.is_dir() else [];sys.path.insert(0,str(_s[0])) if _s else None
+# Note: always run via ``poetry run pylint`` so that all project
+# dependencies are resolved from the Poetry virtualenv.
 
 # Our code style uses short docstrings, lots of typed fields, and
 # intentionally duplicated utility functions across independent modules.
