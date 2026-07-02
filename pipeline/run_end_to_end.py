@@ -74,17 +74,11 @@ def build_game_contexts(
 def fetch_opponent_pitching(
     client: MlbClient, game_logs: list[Any]
 ) -> dict[int, dict[str, float]]:
-    opp_ids = set()
-    for log in game_logs:
-        opp_ids.add(log.opponent_id)
-
-    pitching: dict[int, dict[str, float]] = {}
-    for tid in opp_ids:
-        try:
-            stats = client.get_team_pitching_stats(SEASON, tid)
-            pitching[tid] = stats
-        except Exception:  # pylint: disable=broad-exception-caught
-            pitching[tid] = {}
+    opp_ids = list({log.opponent_id for log in game_logs})
+    try:
+        pitching = client.get_team_pitching_stats(opp_ids, SEASON)
+    except Exception:  # pylint: disable=broad-exception-caught
+        pitching = {}
     return pitching
 
 
@@ -113,21 +107,11 @@ def main() -> None:
     teams = client.get_teams()
     print(f"  {len(teams)} teams")
 
-    print("Fetching statcast leaderboard...")
-    statcast_batters = client.get_statcast_batters(SEASON)
-    print(f"  {len(statcast_batters)} batters")
-
-    print("Fetching expected stats...")
-    expected_stats = client.get_expected_stats(SEASON)
-    print(f"  {len(expected_stats)} batters")
-
     print("Building feature matrix...")
     feature_matrix = build_feature_matrix(
         game_logs,
         season=SEASON,
         teams=teams,
-        statcast_batters=statcast_batters,
-        expected_stats=expected_stats,
         extra_kwargs={
             "game_contexts": game_contexts,
             "opponent_pitching": opponent_pitching,

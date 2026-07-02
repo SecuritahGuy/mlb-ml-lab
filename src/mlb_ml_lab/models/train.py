@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import numpy as np
@@ -41,23 +41,45 @@ class WalkForwardSplit:
     def split(
         self, dates: list[date]
     ) -> list[tuple[list[int], list[int]]]:
-        n = len(dates)
-        fold_size = (n - self.min_train_size) // self.n_splits
-        if fold_size < 1:
+        unique_dates = sorted(set(dates))
+        n_dates = len(unique_dates)
+        if n_dates < self.min_train_size:
             raise ValueError(
-                f"{n} rows is too few for {self.n_splits} folds "
-                f"(need at least {self.min_train_size + self.n_splits})"
+                f"{n_dates} unique dates is too few "
+                f"(min_train_size={self.min_train_size})"
+            )
+
+        fold_dates = (
+            n_dates - self.min_train_size
+        ) // self.n_splits
+        if fold_dates < 1:
+            raise ValueError(
+                f"{n_dates} unique dates is too few for {self.n_splits} folds"
             )
 
         folds: list[tuple[list[int], list[int]]] = []
         for i in range(self.n_splits):
-            train_end = self.min_train_size + i * fold_size
-            test_start = train_end + self.gap
-            test_end = min(test_start + fold_size, n)
-            if test_start >= n:
+            train_end_date = unique_dates[
+                self.min_train_size + i * fold_dates - 1
+            ]
+            test_start_idx = self.min_train_size + i * fold_dates
+            test_start_date = unique_dates[test_start_idx]
+            if self.gap:
+                test_start_date += timedelta(days=self.gap)
+            test_end_idx = min(
+                test_start_idx + fold_dates, n_dates
+            )
+            test_end_date = unique_dates[test_end_idx - 1]
+
+            train_idx = [
+                j for j, d in enumerate(dates) if d <= train_end_date
+            ]
+            test_idx = [
+                j for j, d in enumerate(dates)
+                if test_start_date <= d <= test_end_date
+            ]
+            if not test_idx:
                 break
-            train_idx = list(range(train_end))
-            test_idx = list(range(test_start, test_end))
             folds.append((train_idx, test_idx))
         return folds
 
@@ -86,15 +108,18 @@ def _merge_features_targets(
     return merged
 
 
+_ALWAYS_EXCLUDE: set[str] = {
+    "player_id", "game_pk", "date", "hits",
+    "target_0.5", "target_1.5",
+}
+
+
 def _feature_columns(
     rows: list[dict[str, Any]],
     exclude: set[str] | None = None,
 ) -> list[str]:
     exclude_set = {
-        "player_id",
-        "game_pk",
-        "date",
-        "hits",
+        *_ALWAYS_EXCLUDE,
         *(exclude or set()),
     }
     candidate: set[str] = set()
@@ -216,6 +241,7 @@ def train_baselines(
     merged = _merge_features_targets(feature_matrix, targets)
     if not merged:
         return {"target_col": target_col, "models": {}, "error": "no merged rows"}
+    merged.sort(key=lambda r: r["date"])
 
     dates = [row["date"] for row in merged]
     feat_cols = _feature_columns(merged)
