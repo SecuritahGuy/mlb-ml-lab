@@ -16,7 +16,13 @@ from mlb_ml_lab.data import (
     VenueInfo,
 )
 
-from mlb_ml_lab.features import build_feature_matrix, describe_features, make_targets
+from mlb_ml_lab.features import (
+    build_feature_matrix,
+    describe_features,
+    load_feature_data,
+    make_targets,
+    save_feature_data,
+)
 
 __all__ = [
     "BoxscorePlayer",
@@ -34,5 +40,7 @@ __all__ = [
     "VenueInfo",
     "build_feature_matrix",
     "describe_features",
+    "load_feature_data",
     "make_targets",
+    "save_feature_data",
 ]

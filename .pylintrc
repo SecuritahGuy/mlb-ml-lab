@@ -12,6 +12,7 @@ disable=
     R0902,   # too-many-instance-attributes (dataclasses with lots of fields)
     R0913,   # too-many-arguments
     R0914,   # too-many-locals
+    R0915,   # too-many-statements (orchestration main() is long)
     R0917,   # too-many-positional-arguments
     R0903,   # too-few-public-methods (internal helper classes are fine)
     W0221,   # arguments-differ (extract(**kwargs) pattern is intentional)

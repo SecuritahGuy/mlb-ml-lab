@@ -429,6 +429,115 @@ class MlbClient:
             params={"type": "batter", "year": season, "min": min_qual, "csv": "true"},
         )
 
+    def get_statcast_search_data(
+        self,
+        start_date: str,
+        end_date: str,
+        player_ids: list[int] | None = None,
+    ) -> list[dict[str, str]]:
+        """Fetch pitch-by-pitch statcast data for a date range.
+
+        Uses the date-filterable ``/statcast_search/csv`` endpoint
+        (not the full-season leaderboard CSV).  Each returned dict
+        represents one pitch.
+
+        Args:
+            start_date: ISO date string (e.g. ``"2024-04-01"``).
+            end_date: ISO date string (e.g. ``"2024-10-01"``).
+            player_ids: Optional list of batter player IDs to filter.
+
+        Returns:
+            List of CSV rows as dicts (one per pitch).
+        """
+        params: dict[str, Any] = {
+            "all": "true",
+            "type": "details",
+            "game_date_gt": start_date,
+            "game_date_lt": end_date,
+            "player_type": "batter",
+        }
+        if player_ids:
+            params["batters_lookup[]"] = player_ids
+
+        return self._fetch_savant_csv("/statcast_search/csv", params=params)
+
+    # ------------------------------------------------------------------
+    # Team Bullpen Stats (reliever-only pitching)
+    # ------------------------------------------------------------------
+
+    def get_team_bullpen_stats(
+        self, team_id: int, season: int
+    ) -> dict[str, float]:
+        """Fetch bullpen (reliever-only) pitching stats for a team.
+
+        Identifies relievers via ``gamesStarted / gamesPlayed < 0.5``,
+        then weight-averages their rate stats by innings pitched.
+
+        Returns:
+            Dict with keys ``era``, ``k_per_9``, ``whip``,
+            ``ba_against``, ``hr_per_9``, or empty dict if no relievers.
+        """
+        roster = self.get_roster(team_id, season, roster_type="40Man")
+        pitcher_ids = [
+            p["person"]["id"] for p in roster
+            if (p.get("position") or {}).get("abbreviation") == "P"
+        ]
+
+        total_ip = 0.0
+        w_era = 0.0
+        w_k9 = 0.0
+        w_whip = 0.0
+        w_baa = 0.0
+        w_hr9 = 0.0
+        n = 0
+
+        for pid in pitcher_ids:
+            stats = self.get_player_season_stats(pid, season, group="pitching")
+            if not stats:
+                continue
+            gp = int(stats.get("gamesPlayed", 0))
+            gs = int(stats.get("gamesStarted", 0))
+            if gp == 0 or (gs * 2 >= gp):
+                continue
+            ip_str = stats.get("inningsPitched", "0")
+            if not ip_str:
+                continue
+            ip = float(ip_str)
+            if ip <= 0:
+                continue
+
+            era = _float_or_none(stats.get("era"))
+            k9 = _float_or_none(stats.get("strikeoutsPer9Inn"))
+            whip = _float_or_none(stats.get("whip"))
+            baa = _str_avg_or_none(stats.get("avg"))
+            hr9 = _float_or_none(stats.get("homeRunsPer9"))
+
+            if era is not None:
+                w_era += era * ip
+            if k9 is not None:
+                w_k9 += k9 * ip
+            if whip is not None:
+                w_whip += whip * ip
+            if baa is not None:
+                w_baa += baa * ip
+            if hr9 is not None:
+                w_hr9 += hr9 * ip
+            total_ip += ip
+            n += 1
+
+        if total_ip == 0 or n == 0:
+            return {}
+
+        return {
+            "era": round(w_era / total_ip, 2),
+            "k_per_9": round(w_k9 / total_ip, 2),
+            "whip": round(w_whip / total_ip, 3),
+            "ba_against": round(w_baa / total_ip, 3),
+            "hr_per_9": round(w_hr9 / total_ip, 2),
+            "reliever_count": n,
+            "reliever_ip": round(total_ip, 1),
+        }
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------

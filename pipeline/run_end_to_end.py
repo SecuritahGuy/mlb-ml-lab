@@ -20,6 +20,7 @@ from mlb_ml_lab import (
     build_feature_matrix,
     describe_features,
     make_targets,
+    save_feature_data,
 )
 from mlb_ml_lab.models.train import MODEL_HELP, train_baselines
 
@@ -292,6 +293,34 @@ def main() -> None:
     league_stats = fetch_league_stats(client)
     teams = client.get_teams()
 
+    print("Fetching season schedule...")
+    season_schedule = client.get_season_schedule(SEASON)
+    print(f"  {len(season_schedule)} regular-season games")
+
+    opp_ids = list({log.opponent_id for log in game_logs})
+    print(f"Fetching bullpen stats for {len(opp_ids)} opponents...")
+    bullpen_stats: dict[int, dict[str, float]] = {}
+    for tid in opp_ids:
+        try:
+            bp = client.get_team_bullpen_stats(tid, SEASON)
+            if bp:
+                bullpen_stats[tid] = bp
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
+    print(f"  {len(bullpen_stats)} bullpen stat sets")
+
+    all_dates = sorted({log.date for log in game_logs})
+    statcast_start = all_dates[0] if all_dates else f"{SEASON}-03-01"
+    statcast_end = all_dates[-1] if all_dates else f"{SEASON}-10-31"
+    print(f"Fetching statcast pitch data ({statcast_start} to {statcast_end})...")
+    statcast_pitch_data = client.get_statcast_search_data(
+        statcast_start, statcast_end, player_ids
+    )
+    print(f"  {len(statcast_pitch_data)} pitch rows")
+
+    cache_dir = f"data/features/{TEAM_ID}_{SEASON}"
+    print(f"Feature cache: {cache_dir}")
+
     print("Building feature matrix...")
     feature_matrix = build_feature_matrix(
         game_logs,
@@ -306,6 +335,9 @@ def main() -> None:
             "career_stats": career_stats,
             "pitcher_stats": pitcher_stats,
             "league_stats": league_stats,
+            "statcast_pitch_data": statcast_pitch_data,
+            "season_schedule": season_schedule,
+            "bullpen_stats": bullpen_stats,
         },
     )
     print(f"  {len(feature_matrix)} feature rows")
@@ -316,6 +348,14 @@ def main() -> None:
     print("Building targets...")
     targets = make_targets(game_logs)
     print(f"  {len(targets)} target rows")
+
+    save_feature_data(
+        feature_matrix,
+        targets,
+        cache_dir,
+        {"season": SEASON, "team_id": TEAM_ID},
+    )
+    print(f"  Cached to {cache_dir}")
 
     print("=" * 60)
     print("Training models (walk-forward, 3 folds)...")
