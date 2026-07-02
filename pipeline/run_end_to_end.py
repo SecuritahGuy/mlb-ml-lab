@@ -9,7 +9,10 @@ Configurable constants at the top of the file (``TEAM_ID``, ``SEASON``,
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
+
+from sklearn.exceptions import ConvergenceWarning
 
 from mlb_ml_lab import (
     MlbClient,
@@ -19,6 +22,9 @@ from mlb_ml_lab import (
     make_targets,
 )
 from mlb_ml_lab.models.train import MODEL_HELP, train_baselines
+
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 TEAM_ID = 108  # Los Angeles Angels
@@ -82,6 +88,31 @@ def fetch_opponent_pitching(
     return pitching
 
 
+def fetch_player_details(
+    client: MlbClient, player_ids: list[int]
+) -> dict[int, dict[str, Any]]:
+    details: dict[int, dict[str, Any]] = {}
+    for pid in player_ids:
+        try:
+            details[pid] = client.get_player(pid, season=SEASON)
+        except Exception:  # pylint: disable=broad-exception-caught
+            details[pid] = {}
+    return details
+
+
+def fetch_prev_season_stats(
+    client: MlbClient, player_ids: list[int]
+) -> dict[int, dict[str, Any]]:
+    prev = SEASON - 1
+    stats: dict[int, dict[str, Any]] = {}
+    for pid in player_ids:
+        try:
+            stats[pid] = client.get_player_season_stats(pid, season=prev)
+        except Exception:  # pylint: disable=broad-exception-caught
+            stats[pid] = {}
+    return stats
+
+
 def main() -> None:
     client = MlbClient()
 
@@ -103,6 +134,14 @@ def main() -> None:
     opponent_pitching = fetch_opponent_pitching(client, game_logs)
     print(f"  {len(opponent_pitching)} teams")
 
+    print("Fetching player details...")
+    player_details = fetch_player_details(client, player_ids)
+    print(f"  {len(player_details)} players")
+
+    print("Fetching previous-season stats...")
+    prev_season_stats = fetch_prev_season_stats(client, player_ids)
+    print(f"  {len(prev_season_stats)} players")
+
     print("Fetching teams list...")
     teams = client.get_teams()
     print(f"  {len(teams)} teams")
@@ -115,6 +154,8 @@ def main() -> None:
         extra_kwargs={
             "game_contexts": game_contexts,
             "opponent_pitching": opponent_pitching,
+            "player_details": player_details,
+            "prev_season_stats": prev_season_stats,
         },
     )
     print(f"  {len(feature_matrix)} feature rows")

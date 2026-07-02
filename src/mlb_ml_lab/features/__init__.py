@@ -2,6 +2,7 @@
 import mlb_ml_lab.features.context  # noqa: F401
 import mlb_ml_lab.features.forecast  # noqa: F401
 import mlb_ml_lab.features.matchup  # noqa: F401
+import mlb_ml_lab.features.player  # noqa: F401
 import mlb_ml_lab.features.rolling  # noqa: F401
 import mlb_ml_lab.features.statcast  # noqa: F401
 
