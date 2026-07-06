@@ -52,8 +52,11 @@ Build thin, testable wrappers around the official public MLB Stats API at `stats
 
 ## Phase 4: Backtesting & Odds Integration
 
+- [x] `src/mlb_ml_lab/evaluation/backtest.py` — `walk_forward_predict()` capture, `simulate_bets()` flat-stake, `calibration_buckets()`, `max_drawdown()`, `print_backtest_report()`
+- [x] `pipeline/backtest.py` — end-to-end script (fetch → featurize → walk-forward → simulate → report)
+- [x] Unit tests: walk-forward prediction, betting simulation, calibration, drawdown
 - [ ] Fetch real sportsbook lines (manually or via a free odds API) to evaluate +EV opportunities
-- [ ] `src/mlb_ml_lab/evaluation/backtest.py` — simulate betting over historical seasons: stake sizing, ROI, max drawdown
+- [ ] Kelly / fractional Kelly staking
 - [ ] Track model confidence calibration — are probabilities well-calibrated at decision thresholds?
 
 ## Phase 5: Iteration & Tooling
