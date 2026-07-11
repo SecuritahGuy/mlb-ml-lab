@@ -28,8 +28,10 @@ def _float_or_none(val: str | float | None) -> float | None:
 
 def _month_from_split(split: dict[str, Any]) -> int | None:
     """Extract month number from a stat split dict."""
-    game = split.get("game", {}) or {}
-    date_str = game.get("date", "")
+    date_str = split.get("date", "") or ""
+    if not date_str:
+        game = split.get("game", {}) or {}
+        date_str = game.get("date", "") or ""
     if not date_str:
         return None
     try:
@@ -325,8 +327,11 @@ class MlbClient:
     ) -> dict[int, list[dict[str, Any]]]:
         """Fetch per-month pitching splits for one or more teams.
 
+        The MLB API's ``seasonByMonth`` stat type was removed in 2024,
+        so we fetch ``gameLog`` and aggregate by month.
+
         Returns a dict mapping team_id → list of dicts, each with keys
-        ``month`` (int, 3-9) and ``stat`` (dict of pitching stats).
+        ``month`` (int, 3-10) and ``stat`` (dict of summed pitching stats).
         """
         result: dict[int, list[dict[str, Any]]] = {}
         for tid in team_ids:
@@ -334,18 +339,40 @@ class MlbClient:
                 f"/teams/{tid}/stats",
                 params={
                     "season": season, "group": "pitching",
-                    "stats": "seasonByMonth",
+                    "stats": "gameLog",
                 },
             )
             stats = data.get("stats", [])
             if not stats:
                 continue
             splits = stats[0].get("splits", [])
-            months: list[dict[str, Any]] = []
+
+            monthly: dict[int, dict[str, float]] = {}
             for sp in splits:
                 month_num = _month_from_split(sp)
-                if month_num is not None:
-                    months.append({"month": month_num, "stat": sp.get("stat", {})})
+                if month_num is None:
+                    continue
+                s = sp.get("stat", {})
+                if month_num not in monthly:
+                    monthly[month_num] = {
+                        "inningsPitched": 0.0,
+                        "earnedRuns": 0,
+                        "strikeOuts": 0,
+                        "baseOnBalls": 0,
+                        "hits": 0,
+                    }
+                ip_str = str(s.get("inningsPitched", "0"))
+                parts = ip_str.split(".")
+                ip = float(parts[0]) + (int(parts[1]) / 3 if len(parts) > 1 else 0.0)
+                monthly[month_num]["inningsPitched"] += ip
+                monthly[month_num]["earnedRuns"] += int(s.get("earnedRuns", 0))
+                monthly[month_num]["strikeOuts"] += int(s.get("strikeOuts", 0))
+                monthly[month_num]["baseOnBalls"] += int(s.get("baseOnBalls", 0))
+                monthly[month_num]["hits"] += int(s.get("hits", 0))
+
+            months: list[dict[str, Any]] = [
+                {"month": m, "stat": st} for m, st in sorted(monthly.items())
+            ]
             result[tid] = months
         return result
 
@@ -670,7 +697,7 @@ class MlbClient:
         if team_id is not None:
             params["teamId"] = team_id
         data = self._get("/gamePace", params=params)
-        return data.get("gamePace", [])
+        return data.get("teams", [])
 
     # ------------------------------------------------------------------
     # Context Metrics (leverage index, etc.)

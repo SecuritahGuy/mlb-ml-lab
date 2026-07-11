@@ -25,6 +25,7 @@ httpx = "^0.28"
 scikit-learn = "^1.9.0"
 xgboost = "^3.3.0"
 lightgbm = "^4.6.0"
+mlx = "^0.32.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8"

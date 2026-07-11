@@ -157,25 +157,6 @@ def main() -> None:
             pass
     print(f"  {len(bullpen_stats)} bullpen stat sets")
 
-    print("Fetching player streaks...")
-    streaks_by_player: dict[int, dict[str, int]] = {}
-    for streak_type in ("hitting", "onBase"):
-        try:
-            streaks = client.get_stats_streaks(
-                TRAIN_SEASONS[-1], streak_type=streak_type, limit=500,
-            )
-            for s in streaks:
-                pid = (s.get("player") or {}).get("id")
-                num = s.get("numStreak")
-                if pid is not None and num is not None:
-                    key = "hitting" if streak_type == "hitting" else "onbase"
-                    if pid not in streaks_by_player:
-                        streaks_by_player[pid] = {}
-                    streaks_by_player[pid][key] = num
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-    print(f"  {len(streaks_by_player)} players with streak data")
-
     print("Fetching game pace...")
     game_pace_stats: dict[int, dict[str, float]] = {}
     for tid in opp_ids:
@@ -185,7 +166,7 @@ def main() -> None:
                 p = pace_rows[0]
                 game_pace_stats[tid] = {
                     "time_per_game": p.get("timePerGame"),
-                    "pitches_per_game": p.get("averagePitchesPerGame"),
+                    "pitches_per_game": p.get("pitchesPerGame"),
                 }
         except Exception:  # pylint: disable=broad-exception-caught
             pass
@@ -203,7 +184,8 @@ def main() -> None:
             ld: dict[str, float] = {}
             for entry in leaders:
                 cat = entry.get("leaderCategory", "")
-                val = entry.get("value")
+                leaders_list = entry.get("leaders", [])
+                val = leaders_list[0].get("value") if leaders_list else None
                 if val is not None:
                     if "battingAverage" in cat:
                         ld["top_avg"] = _parse_avg(val)
@@ -232,7 +214,6 @@ def main() -> None:
             "league_stats": league_stats,
             "season_schedule": season_schedule,
             "bullpen_stats": bullpen_stats,
-            "streaks_stats": streaks_by_player,
             "game_pace_stats": game_pace_stats,
             "team_leaders": team_leaders,
         },

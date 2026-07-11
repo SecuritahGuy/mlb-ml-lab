@@ -88,13 +88,15 @@ def _user_agent() -> dict[str, str]:
 class NwsWeather:
     """Weather forecasts and observations via the National Weather Service.
 
-    Caches grid-point lookups (lat/lon → NWS grid) in memory.
+    Caches grid-point lookups (lat/lon → NWS grid) in memory, plus the
+    hourly forecast response per URL with a 1-hour TTL.
     """
 
     def __init__(self, timeout: float = 15.0) -> None:
         self._client = httpx.Client(timeout=httpx.Timeout(timeout))
         self._limiter = TokenBucket(capacity=5, refill_rate=5)
         self._grid_cache: dict[int, dict[str, Any]] = {}
+        self._hourly_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -199,11 +201,17 @@ class NwsWeather:
         url = grid.get("forecast_hourly")
         if not url:
             return {}
+        now = datetime.now(timezone.utc).timestamp()
+        cached = self._hourly_cache.get(url)
+        if cached and (now - cached[0]) < 3600:  # 1-hour TTL
+            return cached[1]
         with self._limiter:
             resp = self._client.get(url, headers=_user_agent())
         if resp.status_code != 200:
             return {}
-        return resp.json()
+        data = resp.json()
+        self._hourly_cache[url] = (now, data)
+        return data
 
     @staticmethod
     def _closest_period(

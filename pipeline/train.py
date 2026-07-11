@@ -13,6 +13,7 @@ Subsequent runs are seconds.
 
 from __future__ import annotations
 
+import sys
 import warnings
 from typing import Any
 
@@ -23,6 +24,7 @@ from mlb_ml_lab import (
     PlayerGameLog,
     build_feature_matrix,
     describe_features,
+    load_feature_data,
     make_targets,
 )
 from mlb_ml_lab.models.train import (
@@ -38,9 +40,28 @@ warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 TRAIN_SEASONS = [2021, 2022, 2023, 2024, 2025]
 MODEL_DIR = "data/models/final"
 PREDICT_SEASON = 2026
+CACHED_DATASET = "data/datasets/full_2021_2026_30teams"
 
 
 def main() -> None:
+    use_cached = None
+    for arg in sys.argv[1:]:
+        if arg == "--use-cached" or arg.startswith("--use-cached="):
+            parts = arg.split("=", 1)
+            use_cached = parts[1] if len(parts) > 1 else CACHED_DATASET
+
+    if use_cached:
+        print(f"Loading cached dataset from {use_cached}...")
+        feature_matrix, targets, meta = load_feature_data(use_cached)
+        print(f"  {len(feature_matrix)} feature rows")
+        print(f"  {len(targets)} target rows")
+        print(f"  {meta.get('feature_count', '?')} feature columns")
+        all_player_ids: set[int] = set()
+        for row in feature_matrix:
+            all_player_ids.add(row["player_id"])
+        _run_training(feature_matrix, targets, all_player_ids)
+        return
+
     client = MlbClient()
 
     all_team_ids = [t["id"] for t in client.get_teams()]
@@ -153,25 +174,6 @@ def main() -> None:
             pass
     print(f"  {len(bullpen_stats)} bullpen stat sets")
 
-    print("Fetching player streaks...")
-    streaks_by_player: dict[int, dict[str, int]] = {}
-    for streak_type in ("hitting", "onBase"):
-        try:
-            streaks = client.get_stats_streaks(
-                TRAIN_SEASONS[-1], streak_type=streak_type, limit=500,
-            )
-            for s in streaks:
-                pid = (s.get("player") or {}).get("id")
-                num = s.get("numStreak")
-                if pid is not None and num is not None:
-                    key = "hitting" if streak_type == "hitting" else "onbase"
-                    if pid not in streaks_by_player:
-                        streaks_by_player[pid] = {}
-                    streaks_by_player[pid][key] = num
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-    print(f"  {len(streaks_by_player)} players with streak data")
-
     print("Fetching game pace...")
     game_pace_stats: dict[int, dict[str, float]] = {}
     for tid in opp_ids:
@@ -181,7 +183,7 @@ def main() -> None:
                 p = pace_rows[0]
                 game_pace_stats[tid] = {
                     "time_per_game": p.get("timePerGame"),
-                    "pitches_per_game": p.get("averagePitchesPerGame"),
+                    "pitches_per_game": p.get("pitchesPerGame"),
                 }
         except Exception:  # pylint: disable=broad-exception-caught
             pass
@@ -199,7 +201,8 @@ def main() -> None:
             ld: dict[str, float] = {}
             for entry in leaders:
                 cat = entry.get("leaderCategory", "")
-                val = entry.get("value")
+                leaders_list = entry.get("leaders", [])
+                val = leaders_list[0].get("value") if leaders_list else None
                 if val is not None:
                     if "battingAverage" in cat:
                         ld["top_avg"] = _parse_avg(val)
@@ -228,7 +231,6 @@ def main() -> None:
             "league_stats": league_stats,
             "season_schedule": season_schedule,
             "bullpen_stats": bullpen_stats,
-            "streaks_stats": streaks_by_player,
             "game_pace_stats": game_pace_stats,
             "team_leaders": team_leaders,
         },
@@ -243,6 +245,19 @@ def main() -> None:
     targets = make_targets(all_game_logs)
     print(f"  {len(targets)} target rows")
 
+    _run_training(feature_matrix, targets, all_player_ids, len(all_game_logs))
+
+
+def _run_training(
+    feature_matrix: list[dict[str, Any]],
+    targets: list[dict[str, Any]],
+    all_player_ids: set[int],
+    n_game_logs: int = 0,
+) -> None:
+    """Walk-forward validation + final model training.
+
+    Shared by both the live-fetch path and the ``--use-cached`` path.
+    """
     print(f"\n{'='*60}")
     print("Walk-forward validation (season-boundary splits)")
     print(f"{'='*60}")
@@ -266,11 +281,18 @@ def main() -> None:
             print(f"    Folds:        {mdata['n_folds']}")
 
     print(f"\n{'='*60}")
-    print(f"Training final model on all {len(TRAIN_SEASONS)} seasons")
+    print("Training final model on all available seasons")
     print(f"{'='*60}")
 
+    # Best params from hyperparameter tuning (XGB, target_1.5)
+    _TUNED_XGB = {
+        "n_estimators": 500, "max_depth": 5, "learning_rate": 0.01,
+        "subsample": 0.8, "colsample_bytree": 1.0, "min_child_weight": 1,
+    }
+
     final_result = train_final(
-        feature_matrix, targets, target_col="target_1.5", model_type="lgb"
+        feature_matrix, targets, target_col="target_1.5",
+        model_type="xgb", params=_TUNED_XGB,
     )
     if final_result["model"] is None:
         print("  ERROR: final training failed")
@@ -286,7 +308,7 @@ def main() -> None:
             "model_type": "lgb",
             "train_seasons": TRAIN_SEASONS,
             "n_players": len(all_player_ids),
-            "n_game_logs": len(all_game_logs),
+            "n_game_logs": n_game_logs,
             **final_result["metadata"],
         },
     )
@@ -296,7 +318,8 @@ def main() -> None:
 
     # Also train final model for target_0.5
     final_05 = train_final(
-        feature_matrix, targets, target_col="target_0.5", model_type="lgb"
+        feature_matrix, targets, target_col="target_0.5",
+        model_type="xgb", params=_TUNED_XGB,
     )
     if final_05["model"] is not None:
         save_model(
@@ -306,7 +329,7 @@ def main() -> None:
             f"{MODEL_DIR}_0_5",
             {
                 "target_col": "target_0.5",
-                "model_type": "lgb",
+                "model_type": "xgb",
                 "train_seasons": TRAIN_SEASONS,
                 "n_players": len(all_player_ids),
                 **final_05["metadata"],

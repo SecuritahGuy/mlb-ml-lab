@@ -47,7 +47,8 @@ Build thin, testable wrappers around the official public MLB Stats API at `stats
 - [x] `src/mlb_ml_lab/models/evaluate.py` — metrics: accuracy, log-loss, ROC-AUC, Brier score
 - [x] Walk-forward validation (expanding window, not random split)
 - [x] End-to-end pipeline (`pipeline/run_end_to_end.py`): fetch real MLB data → featurize → walk-forward train → print metrics
-- [ ] Hyperparameter tuning (grid/random search inside walk-forward)
+- [x] Hyperparameter tuning (`tune_hyperparameters()`: random search inside walk-forward, per-model default grids, AUC or log-loss optimisation)
+- [x] `expected_calibration_error()` — ECE metric over probability buckets
 - [ ] Calibration curve + expected profit at market odds
 
 ## Phase 4: Backtesting & Odds Integration

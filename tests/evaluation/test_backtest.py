@@ -10,6 +10,7 @@ from mlb_ml_lab.evaluation.backtest import (
     GamePrediction,
     BetResult,
     calibration_buckets,
+    expected_calibration_error,
     max_drawdown,
     simulate_bets,
     walk_forward_predict,
@@ -250,6 +251,46 @@ class TestCalibrationBuckets:
         for b in buckets:
             if b["bin_lower"] < 0.9:
                 assert False, f"Empty bin [{b['bin_lower']},{b['bin_upper']}) included"
+
+
+# ---------------------------------------------------------------------------
+# expected_calibration_error
+# ---------------------------------------------------------------------------
+
+
+class TestExpectedCalibrationError:
+    def test_perfect_calibration(self):
+        # 0.2 bin: 1 of 5 positive = 20% observed (matches mean_pred=0.2)
+        preds_20 = [_prediction(0.2, 1)] + [_prediction(0.2, 0) for _ in range(4)]
+        # 0.8 bin: 4 of 5 positive = 80% observed (matches mean_pred=0.8)
+        preds_80 = [_prediction(0.8, 1) for _ in range(4)] + [_prediction(0.8, 0)]
+        ece = expected_calibration_error(preds_20 + preds_80, n_bins=10)
+        assert ece == pytest.approx(0.0, abs=0.01)
+
+    def test_imperfect_calibration(self):
+        # 0.2 bin: predicted 0.2 but observed 0.0 (error = 0.2)
+        # 0.8 bin: predicted 0.8 but observed 1.0 (error = 0.2)
+        preds = [
+            _prediction(0.2, 0),
+            _prediction(0.2, 0),
+            _prediction(0.2, 0),
+            _prediction(0.8, 1),
+            _prediction(0.8, 1),
+            _prediction(0.8, 1),
+        ]
+        # Each bin has count=3, total=6
+        # Error contribution: 3*0.2 + 3*0.2 = 1.2, /6 = 0.2
+        ece = expected_calibration_error(preds, n_bins=10)
+        assert ece == pytest.approx(0.2, abs=0.01)
+
+    def test_empty_list(self):
+        assert expected_calibration_error([]) == 0.0
+
+    def test_single_bin(self):
+        preds = [_prediction(0.5, 1), _prediction(0.5, 0)]
+        ece = expected_calibration_error(preds, n_bins=10)
+        # mean_predicted = 0.5, observed_freq = 0.5, error = 0.0
+        assert ece == pytest.approx(0.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------

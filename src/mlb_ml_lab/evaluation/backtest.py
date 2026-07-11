@@ -248,6 +248,36 @@ def calibration_buckets(
     return results
 
 
+def expected_calibration_error(
+    predictions: list[GamePrediction],
+    n_bins: int = 10,
+) -> float:
+    """Expected calibration error (ECE).
+
+    Weighted average of the absolute difference between predicted
+    probability and observed frequency across *n_bins* equal-width
+    buckets.
+
+    Args:
+        predictions: Out-of-sample predictions.
+        n_bins: Number of probability bins (default 10).
+
+    Returns:
+        ECE as a float in [0, 1]. Lower is better.
+    """
+    buckets = calibration_buckets(predictions, n_bins=n_bins)
+    if not buckets:
+        return 0.0
+    total = sum(b["count"] for b in buckets)
+    if total == 0:
+        return 0.0
+    ece = sum(
+        b["count"] * abs(b["observed_freq"] - b["mean_predicted"])
+        for b in buckets
+    ) / total
+    return round(ece, 4)
+
+
 def max_drawdown(cumulative_profits: list[float]) -> float:
     """Compute maximum drawdown from a sequence of cumulative profits.
 

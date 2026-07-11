@@ -18,6 +18,7 @@ from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
 
 from mlb_ml_lab.models.evaluate import classification_metrics
+from mlb_ml_lab.models.mlx_nn import MlxNNClassifier, save_mlx_model, load_mlx_model
 
 
 @dataclass
@@ -111,6 +112,62 @@ def _merge_features_targets(
     return merged
 
 
+_BASE_PARAMS: dict[str, dict[str, Any]] = {
+    "lr": {"max_iter": 1000},
+    "xgb": {
+        "n_estimators": 300, "learning_rate": 0.05, "max_depth": 5,
+        "eval_metric": "logloss", "verbosity": 0,
+    },
+    "rf": {"n_estimators": 300, "max_depth": 8},
+    "lgb": {
+        "n_estimators": 300, "learning_rate": 0.05, "max_depth": 5,
+        "verbosity": -1, "deterministic": True,
+    },
+    "mlx": {
+        "hidden_dims": (256, 128, 64),
+        "dropout_prob": 0.3,
+        "use_batch_norm": True,
+        "class_weight": "balanced",
+        "learning_rate": 0.001,
+        "epochs": 100,
+        "batch_size": 256,
+        "early_stop_patience": 10,
+        "l2_reg": 1e-5,
+    },
+}
+
+_MODEL_CLASSES: dict[str, Any] = {
+    "lr": LogisticRegression,
+    "xgb": XGBClassifier,
+    "rf": RandomForestClassifier,
+    "lgb": LGBMClassifier,
+}
+
+
+def _build_model(
+    model_type: str, seed: int, params: dict[str, Any] | None = None,
+) -> Any:
+    if model_type == "mlx":
+        kwargs = dict(_BASE_PARAMS.get("mlx", {}))
+        if params:
+            kwargs.update(params)
+        return MlxNNClassifier(seed=seed, **kwargs)
+
+    model_cls = _MODEL_CLASSES.get(model_type)
+    if model_cls is None:
+        raise ValueError(f"Unknown model type: {model_type}")
+    kwargs = _BASE_PARAMS.get(model_type, {}).copy()
+    kwargs["random_state"] = seed
+    kwargs["n_jobs"] = -1
+    if params:
+        kwargs.update(params)
+    if model_type == "lgb":
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            return model_cls(**kwargs)
+    return model_cls(**kwargs)
+
+
 _ALWAYS_EXCLUDE: set[str] = {
     "player_id", "game_pk", "date", "hits",
     "target_0.5", "target_1.5",
@@ -131,56 +188,25 @@ def _feature_columns(
 
     cols: list[str] = []
     for col in sorted(candidate):
-        vals = [r.get(col) for r in rows]
+        vals: list[float] = []
         numeric = True
-        for v in vals:
+        for v in (r.get(col) for r in rows):
             if v is None:
+                vals.append(float("nan"))
                 continue
             try:
-                float(v)
+                vals.append(float(v))
             except (TypeError, ValueError):
                 numeric = False
                 break
-        if numeric:
-            cols.append(col)
+        if not numeric:
+            continue
+        # Drop columns that are all NaN, all zeros, or constant
+        good = [v for v in vals if not np.isnan(v)]
+        if not good or min(good) == max(good):
+            continue
+        cols.append(col)
     return cols
-
-
-def _build_model(
-    model_type: str, seed: int
-) -> Any:
-    if model_type == "lr":
-        return LogisticRegression(max_iter=1000, random_state=seed)
-    if model_type == "xgb":
-        return XGBClassifier(
-            n_estimators=300,
-            learning_rate=0.05,
-            max_depth=5,
-            random_state=seed,
-            n_jobs=-1,
-            verbosity=0,
-            eval_metric="logloss",
-        )
-    if model_type == "rf":
-        return RandomForestClassifier(
-            n_estimators=300,
-            max_depth=8,
-            random_state=seed,
-            n_jobs=-1,
-        )
-    if model_type == "lgb":
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=UserWarning)
-            return LGBMClassifier(
-                n_estimators=300,
-                learning_rate=0.05,
-                max_depth=5,
-                random_state=seed,
-                n_jobs=-1,
-                verbosity=-1,
-                deterministic=True,
-            )
-    raise ValueError(f"Unknown model type: {model_type}")
 
 
 MODEL_HELP = {
@@ -188,14 +214,172 @@ MODEL_HELP = {
     "xgb": "XGBoost",
     "rf": "RandomForest",
     "lgb": "LightGBM",
+    "mlx": "MLX-MLP",
 }
+
+DEFAULT_PARAM_GRIDS: dict[str, dict[str, list[Any]]] = {
+    "mlx": {
+        "learning_rate": [0.001, 0.003, 0.01],
+        "dropout_prob": [0.1, 0.2, 0.3],
+        "batch_size": [32, 64],
+    },
+    "lr": {
+        "C": [0.01, 0.1, 1.0, 10.0, 100.0],
+        "solver": ["lbfgs", "liblinear"],
+    },
+    "xgb": {
+        "n_estimators": [100, 200, 300, 500],
+        "max_depth": [3, 5, 7, 9],
+        "learning_rate": [0.01, 0.05, 0.1, 0.2],
+        "subsample": [0.7, 0.8, 1.0],
+        "colsample_bytree": [0.7, 0.8, 1.0],
+        "min_child_weight": [1, 3, 5],
+    },
+    "rf": {
+        "n_estimators": [100, 200, 300, 500],
+        "max_depth": [4, 6, 8, 10, None],
+        "min_samples_split": [2, 5, 10],
+        "min_samples_leaf": [1, 2, 4],
+        "max_features": ["sqrt", "log2", None],
+    },
+    "lgb": {
+        "n_estimators": [100, 200, 300, 500],
+        "max_depth": [3, 5, 7, 9],
+        "learning_rate": [0.01, 0.05, 0.1, 0.2],
+        "subsample": [0.7, 0.8, 1.0],
+        "colsample_bytree": [0.7, 0.8, 1.0],
+        "min_child_weight": [1, 3, 5],
+        "num_leaves": [15, 31, 63],
+    },
+}
+
+
+def tune_hyperparameters(
+    feature_matrix: list[dict[str, Any]],
+    targets: list[dict[str, Any]],
+    target_col: str = "target_0.5",
+    model_type: str = "xgb",
+    param_grid: dict[str, list[Any]] | None = None,
+    n_trials: int = 20,
+    n_splits: int = 5,
+    seed: int = 42,
+    metric: str = "auc",
+) -> dict[str, Any]:
+    """Random search over hyperparameters inside walk-forward validation.
+
+    Args:
+        feature_matrix: Output from ``build_feature_matrix()``.
+        targets: Output from ``make_targets()``.
+        target_col: Which target column to predict.
+        model_type: Classifier type (``lr``, ``xgb``, ``rf``, ``lgb``).
+        param_grid: Dict mapping param names to lists of candidate values.
+                    Defaults to ``DEFAULT_PARAM_GRIDS[model_type]``.
+        n_trials: Number of random parameter combinations to evaluate.
+        n_splits: Number of walk-forward folds.
+        seed: Random seed for reproducibility.
+        metric: Metric to optimise (``auc`` or ``log_loss``).
+
+    Returns:
+        Dict with keys ``best_params``, ``best_score``, ``best_std``,
+        ``trials`` (list of per-trial results), ``target_col``,
+        ``model_type``, ``metric``, ``n_trials``, ``n_splits``.
+    """
+    if param_grid is None:
+        param_grid = DEFAULT_PARAM_GRIDS.get(model_type)
+        if param_grid is None:
+            raise ValueError(
+                f"No default param grid for '{model_type}'. "
+                f"Supply a ``param_grid`` explicitly."
+            )
+
+    merged = _merge_features_targets(feature_matrix, targets)
+    if not merged:
+        return {"error": "no merged rows", "best_params": {}, "best_score": 0.0,
+                "best_std": 0.0, "trials": []}
+    merged.sort(key=lambda r: r["date"])
+    dates = [row["date"] for row in merged]
+
+    feat_cols = _feature_columns(merged)
+    x_all = np.array(
+        [[row[c] for c in feat_cols] for row in merged], dtype=np.float64
+    )
+    y_all = np.array([row[target_col] for row in merged], dtype=np.int32)
+
+    imputer = SimpleImputer(strategy="median")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=UserWarning)
+        x_all = imputer.fit_transform(x_all)
+    x_all = np.nan_to_num(x_all, nan=0.0)
+
+    splitter = WalkForwardSplit(n_splits=n_splits)
+    folds = splitter.split(dates)
+    if not folds:
+        return {"error": "no folds generated", "best_params": {}, "best_score": 0.0,
+                "best_std": 0.0, "trials": []}
+
+    # Build a list of all parameter keys and their candidate lists.
+    param_keys = list(param_grid.keys())
+    param_values = [param_grid[k] for k in param_keys]
+
+    rng = np.random.default_rng(seed)
+    trials: list[dict[str, Any]] = []
+    best_score = -float("inf") if metric == "auc" else float("inf")
+    best_params: dict[str, Any] = {}
+    best_std = 0.0
+
+    for trial in range(n_trials):
+        combo: dict[str, Any] = {}
+        for k, vals in zip(param_keys, param_values):
+            idx = rng.integers(len(vals))
+            combo[k] = vals[int(idx)]
+
+        fold_metrics: list[dict[str, float]] = []
+        for fold_idx, (train_idx, test_idx) in enumerate(folds):
+            metrics = _run_fold(
+                model_type, x_all[train_idx], y_all[train_idx],
+                x_all[test_idx], y_all[test_idx], fold_idx, seed,
+                params=combo,
+            )
+            fold_metrics.append(metrics)
+
+        scores = [m[metric] for m in fold_metrics if not np.isnan(m.get(metric, float("nan")))]
+        if not scores:
+            continue
+        mean_score = float(np.mean(scores))
+        std_score = float(np.std(scores)) if len(scores) > 1 else 0.0
+
+        trials.append({
+            "params": dict(combo),
+            metric: mean_score,
+            f"{metric}_std": std_score,
+            "fold_metrics": fold_metrics,
+        })
+
+        better = mean_score > best_score if metric == "auc" else mean_score < best_score
+        if better:
+            best_score = mean_score
+            best_params = dict(combo)
+            best_std = std_score
+
+    return {
+        "best_params": best_params,
+        "best_score": best_score,
+        "best_std": best_std,
+        "trials": trials,
+        "target_col": target_col,
+        "model_type": model_type,
+        "metric": metric,
+        "n_trials": n_trials,
+        "n_splits": n_splits,
+    }
 
 
 def _run_fold(
     model_type: str, x_train: np.ndarray, y_train: np.ndarray,
     x_test: np.ndarray, y_test: np.ndarray, fold_idx: int, seed: int,
+    params: dict[str, Any] | None = None,
 ) -> dict[str, float]:
-    model = _build_model(model_type, seed)
+    model = _build_model(model_type, seed, params=params)
     model.fit(x_train, y_train)
     y_pred = model.predict(x_test)
     y_proba = model.predict_proba(x_test)[:, 1]
@@ -361,10 +545,13 @@ def save_model(
         The *directory* path.
     """
     os.makedirs(directory, exist_ok=True)
-    joblib.dump(model, os.path.join(directory, "model.joblib"))
+    if isinstance(model, MlxNNClassifier):
+        save_mlx_model(model, directory, metadata)
+    else:
+        joblib.dump(model, os.path.join(directory, "model.joblib"))
     joblib.dump(feature_cols, os.path.join(directory, "feature_cols.joblib"))
     joblib.dump(imputer, os.path.join(directory, "imputer.joblib"))
-    if metadata:
+    if metadata and not isinstance(model, MlxNNClassifier):
         meta_path = os.path.join(directory, "metadata.json")
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
@@ -379,18 +566,27 @@ def load_model(
     Returns:
         ``(model, feature_cols, imputer, metadata)`` tuple.
     """
-    model = joblib.load(os.path.join(directory, "model.joblib"))
+    config_path = os.path.join(directory, "config.json")
+    if os.path.isfile(config_path):
+        model = load_mlx_model(directory)
+        metadata: dict[str, Any] = {}
+        meta_path = os.path.join(directory, "config.json")
+        if os.path.isfile(meta_path):
+            with open(meta_path, encoding="utf-8") as f:
+                metadata = json.load(f)
+    else:
+        model = joblib.load(os.path.join(directory, "model.joblib"))
+        metadata = {}
+        meta_path = os.path.join(directory, "metadata.json")
+        if os.path.isfile(meta_path):
+            with open(meta_path, encoding="utf-8") as f:
+                metadata = json.load(f)
     feature_cols: list[str] = joblib.load(
         os.path.join(directory, "feature_cols.joblib")
     )
     imputer: SimpleImputer = joblib.load(
         os.path.join(directory, "imputer.joblib")
     )
-    metadata: dict[str, Any] = {}
-    meta_path = os.path.join(directory, "metadata.json")
-    if os.path.isfile(meta_path):
-        with open(meta_path, encoding="utf-8") as f:
-            metadata = json.load(f)
     return model, feature_cols, imputer, metadata
 
 
@@ -404,6 +600,7 @@ def train_final(
     targets: list[dict[str, Any]],
     target_col: str = "target_0.5",
     model_type: str = "lgb",
+    params: dict[str, Any] | None = None,
     seed: int = 42,
 ) -> dict[str, Any]:
     """Train a single model on ALL data and return it with preprocessors.
@@ -439,7 +636,7 @@ def train_final(
         x = imputer.fit_transform(x)
     x = np.nan_to_num(x, nan=0.0)
 
-    model = _build_model(model_type, seed)
+    model = _build_model(model_type, seed, params=params)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=UserWarning)
         model.fit(x, y)
