@@ -18,6 +18,7 @@ from mlb_ml_lab.features.assemble import (
     build_feature_matrix,
     describe_features,
     load_feature_data,
+    load_game_logs,
     save_feature_data,
 )
 from mlb_ml_lab.features.targets import make_targets
@@ -26,6 +27,7 @@ __all__ = [
     "build_feature_matrix",
     "describe_features",
     "load_feature_data",
+    "load_game_logs",
     "save_feature_data",
     "make_targets",
 ]

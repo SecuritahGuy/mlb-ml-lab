@@ -13,7 +13,10 @@ near-instant after the first fetch.
 
 from __future__ import annotations
 
+import json
+import os
 import time
+from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
@@ -637,6 +640,12 @@ def main() -> None:
             "game_log_count": len(game_logs),
         },
     )
+    # Also save raw game logs for sequence model training
+    logs_path = os.path.join(output_dir, "game_logs.jsonl")
+    with open(logs_path, "w", encoding="utf-8") as f:
+        for log in game_logs:
+            f.write(json.dumps(asdict(log), default=str) + "\n")
+    print(f"  {len(game_logs)} game logs saved to {logs_path}")
     print(f"  Saved to {output_dir}/")
 
     elapsed = time.time() - t_start

@@ -178,6 +178,20 @@ def load_feature_data(
     return features, targets_list, metadata
 
 
+def load_game_logs(directory: str) -> list[dict[str, Any]]:
+    """Load raw game logs saved by ``harvest_dataset.py``."""
+    logs: list[dict[str, Any]] = []
+    path = os.path.join(directory, "game_logs.jsonl")
+    if not os.path.isfile(path):
+        return logs
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                logs.append(json.loads(line))
+    return logs
+
+
 def _col_names(rows: list[dict[str, Any]]) -> list[str]:
     if not rows:
         return []
