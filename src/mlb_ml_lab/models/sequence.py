@@ -538,11 +538,6 @@ def build_hybrid_sequences(
             if target_row is None:
                 continue
 
-            if ctx_cols is None:
-                ctx_cols = [k for k in feat_row
-                            if k not in ("player_id", "game_pk", "date")
-                            and _is_numeric(feat_row[k])]
-
             seq = vecs[pos - seq_len: pos]
             seq_list.append(np.array(seq, dtype=np.float32))
 

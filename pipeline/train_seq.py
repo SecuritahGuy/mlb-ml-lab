@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import warnings
+from typing import Any
 
 import numpy as np
 from sklearn.exceptions import ConvergenceWarning
@@ -98,6 +99,28 @@ def main() -> None:
     targets: list[dict] = targets_list
     features: list[dict] = feature_matrix
 
+    # Build proper alignment: feature rows by (player_id, game_pk)
+    feat_by_key: dict[tuple[int, int], dict[str, Any]] = {}
+    for f in features:
+        feat_by_key[(f["player_id"], f["game_pk"])] = f
+    tgt_by_key: dict[tuple[int, int], dict[str, Any]] = {}
+    for t in targets:
+        tgt_by_key[(t["player_id"], t["game_pk"])] = t
+
+    # Game logs that have both feature rows and targets
+    aligned_logs: list = []
+    aligned_feats: list[dict] = []
+    aligned_tgts: list[dict] = []
+    for lg in game_logs:
+        key = (lg.player_id, lg.game_pk)
+        fr = feat_by_key.get(key)
+        tr = tgt_by_key.get(key)
+        if fr is not None and tr is not None:
+            aligned_logs.append(lg)
+            aligned_feats.append(fr)
+            aligned_tgts.append(tr)
+    print(f"  Aligned: {len(aligned_logs)} games with both features + targets")
+
     for target_col in ("target_0.5", "target_1.5"):
         print(f"\n{'=' * 60}")
         print(f"Walk-forward — {target_col}")
@@ -109,15 +132,15 @@ def main() -> None:
             train_cutoff = TRAIN_SEASONS[fold_idx]
             test_season = TRAIN_SEASONS[fold_idx + 1]
 
-            train_logs = [lg for lg, t in zip(game_logs, targets)
+            train_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
                           if int(t["date"][:4]) <= train_cutoff]
-            test_logs = [lg for lg, t in zip(game_logs, targets)
+            test_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
                          if int(t["date"][:4]) == test_season]
-            train_tgt = [t for t in targets if int(t["date"][:4]) <= train_cutoff]
-            test_tgt = [t for t in targets if int(t["date"][:4]) == test_season]
-            train_feat = [f for f, t in zip(features, targets)
+            train_tgt = [t for t in aligned_tgts if int(t["date"][:4]) <= train_cutoff]
+            test_tgt = [t for t in aligned_tgts if int(t["date"][:4]) == test_season]
+            train_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
                           if int(t["date"][:4]) <= train_cutoff]
-            test_feat = [f for f, t in zip(features, targets)
+            test_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
                          if int(t["date"][:4]) == test_season]
 
             print(f"\n  Fold {fold_idx + 1}: train ≤{train_cutoff}, test={test_season}")
@@ -146,30 +169,94 @@ def main() -> None:
             print(f"    Avg Accuracy:  {avg_acc:.4f}")
             print(f"    Folds:         {len(fold_metrics)}")
 
-    # ── Train final hybrid model ──────────────────────────────────
+    # ── Tune hybrid model ─────────────────────────────────────────
     print(f"\n{'=' * 60}")
-    print("Training final hybrid model on all seasons")
+    print("Tuning hyperparameters on fold 2 (train ≤2022, test 2023)")
+    print(f"{'=' * 60}")
+
+    target_col = "target_0.5"
+    tune_fold = 1  # 0-indexed, fold 2
+    train_cutoff = TRAIN_SEASONS[tune_fold]
+    test_season = TRAIN_SEASONS[tune_fold + 1]
+
+    tune_train_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
+                       if int(t["date"][:4]) <= train_cutoff]
+    tune_test_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
+                      if int(t["date"][:4]) == test_season]
+    tune_train_tgt = [t for t in aligned_tgts if int(t["date"][:4]) <= train_cutoff]
+    tune_test_tgt = [t for t in aligned_tgts if int(t["date"][:4]) == test_season]
+    tune_train_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
+                       if int(t["date"][:4]) <= train_cutoff]
+    tune_test_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
+                      if int(t["date"][:4]) == test_season]
+
+    Xs_tr, Xc_tr, y_tr, tune_sm, tune_ss, tune_fm, tune_fs = build_hybrid_sequences(
+        tune_train_logs, tune_train_feat, tune_train_tgt,
+        target_col=target_col,
+    )
+    Xs_te, Xc_te, y_te, _, _, _, _ = build_hybrid_sequences(
+        tune_test_logs, tune_test_feat, tune_test_tgt,
+        stats_mean=tune_sm, stats_std=tune_ss,
+        feat_mean=tune_fm, feat_std=tune_fs,
+        target_col=target_col,
+    )
+    print(f"  Train samples: {len(Xs_tr)}, Test samples: {len(Xs_te)}")
+
+    CONFIGS: list[dict] = [
+        {"label": "baseline",  "hidden_dim": 64,  "learning_rate": 1e-3, "epochs": 60,  "batch_size": 512, "dropout": 0.2},
+        {"label": "wide",      "hidden_dim": 128, "learning_rate": 1e-3, "epochs": 60,  "batch_size": 512, "dropout": 0.2},
+        {"label": "deep+lr",   "hidden_dim": 64,  "learning_rate": 3e-4, "epochs": 120, "batch_size": 512, "dropout": 0.2},
+        {"label": "wide+lr",   "hidden_dim": 128, "learning_rate": 3e-4, "epochs": 120, "batch_size": 512, "dropout": 0.2},
+    ]
+
+    tune_results: list[tuple[str, float]] = []
+    for cfg in CONFIGS:
+        print(f"\n  --- {cfg['label']} ---")
+        model, _ = train_hybrid_model(
+            Xs_tr, Xc_tr, y_tr,
+            hidden_dim=cfg["hidden_dim"],
+            learning_rate=cfg["learning_rate"],
+            epochs=cfg["epochs"],
+            batch_size=cfg["batch_size"],
+            dropout=cfg["dropout"],
+            verbose=True,
+        )
+        yp = predict_hybrid_model(model, Xs_te, Xc_te)
+        yp_bin = (yp > 0.5).astype(np.int32)
+        m = classification_metrics(y_te.tolist(), yp_bin.tolist(), yp.tolist())
+        auc = m.get("auc", 0)
+        print(f"  → {cfg['label']}: AUC={auc:.4f}  Acc={m['accuracy']:.4f}")
+        tune_results.append((cfg["label"], auc))
+
+    best_cfg_idx = int(np.argmax([r[1] for r in tune_results]))
+    best_cfg = CONFIGS[best_cfg_idx]
+    print(f"\n  Best config: {best_cfg['label']} (AUC={tune_results[best_cfg_idx][1]:.4f})")
+
+    # ── Train final hybrid model with best config ─────────────────
+    print(f"\n{'=' * 60}")
+    print(f"Training final hybrid model ({best_cfg['label']} config)")
     print(f"{'=' * 60}")
 
     Xs, Xc, y, sm, ss, fm, fs = build_hybrid_sequences(
-        game_logs, features, targets, target_col="target_0.5",
+        aligned_logs, aligned_feats, aligned_tgts,
+        target_col="target_0.5",
     )
     print(f"  {len(Xs)} samples")
 
     model, metadata = train_hybrid_model(
         Xs, Xc, y,
-        hidden_dim=64,
-        n_layers=2,
-        dropout=0.2,
-        learning_rate=1e-3,
-        epochs=80,
-        batch_size=512,
+        hidden_dim=best_cfg["hidden_dim"],
+        dropout=best_cfg["dropout"],
+        learning_rate=best_cfg["learning_rate"],
+        epochs=best_cfg["epochs"] + 30,
+        batch_size=best_cfg["batch_size"],
         verbose=True,
     )
 
     save_hybrid_model(
         model, MODEL_DIR, sm, ss, fm, fs,
-        metadata={**metadata, "seasons": TRAIN_SEASONS, "target": "target_0.5"},
+        metadata={**metadata, "seasons": TRAIN_SEASONS, "target": "target_0.5",
+                  "tune_config": best_cfg["label"]},
     )
     print(f"  Model saved to {MODEL_DIR}")
 
