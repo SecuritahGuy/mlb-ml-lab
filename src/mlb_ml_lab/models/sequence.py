@@ -703,3 +703,350 @@ def predict_hybrid_model(
         all_probas.append(np.asarray(probas).reshape(-1))
 
     return np.concatenate(all_probas)
+
+
+# ---------------------------------------------------------------------------
+# Multi-task model: shared encoder, two heads
+# ---------------------------------------------------------------------------
+
+
+class MultiTaskHybridPredictor(nn.Module):
+    """Shared GRU+MLP encoder with two output heads.
+
+    Architecture::
+
+        [B,T,F] → GRU → [B,H]  ─┐
+                                 ├→ Concat → head_05 → [B,1]
+        [B,C] → Linear+ReLU ────┘
+                                           head_15 → [B,1]
+    """
+
+    def __init__(
+        self,
+        n_stats: int = N_STATS,
+        n_context: int = 64,
+        hidden_dim: int = 64,
+        n_layers: int = 2,
+        dropout: float = 0.3,
+    ):
+        super().__init__()
+        self.gru = nn.GRU(n_stats, hidden_dim, n_layers)
+        self.context_net = nn.Sequential(
+            nn.Linear(n_context, hidden_dim),
+            nn.ReLU(),
+        )
+        self.dropout = nn.Dropout(dropout)
+        self.head_05 = nn.Linear(hidden_dim * 2, 1)
+        self.head_15 = nn.Linear(hidden_dim * 2, 1)
+
+    def __call__(
+        self, seq: mx.array, ctx: mx.array
+    ) -> tuple[mx.array, mx.array]:
+        out = self.gru(seq)
+        last = out[:, -1, :]
+        last = self.dropout(last)
+        ctx_emb = self.context_net(ctx)
+        combined = mx.concatenate([last, ctx_emb], axis=-1)
+        return self.head_05(combined), self.head_15(combined)
+
+
+def build_hybrid_mt_sequences(
+    game_logs: list[Any],
+    feature_matrix: list[dict[str, Any]],
+    targets: list[dict[str, Any]],
+    seq_len: int = SEQUENCE_LEN,
+    stats_mean: np.ndarray | None = None,
+    stats_std: np.ndarray | None = None,
+    feat_mean: np.ndarray | None = None,
+    feat_std: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Build sequences + context features for multi-task learning.
+
+    Returns:
+        ``(X_seq, X_ctx, y_05, y_15, stats_mean, stats_std, feat_mean,
+        feat_std)``.
+    """
+    feat_index: dict[tuple[int, int], dict[str, Any]] = {}
+    for fr in feature_matrix:
+        feat_index[(fr["player_id"], fr["game_pk"])] = fr
+
+    target_index: dict[tuple[int, int], dict[str, Any]] = {}
+    for t in targets:
+        target_index[(t["player_id"], t["game_pk"])] = t
+
+    grouped: dict[tuple[int, str], list[tuple[int, Any]]] = defaultdict(list)
+    for i, log in enumerate(game_logs):
+        pid = log.player_id if hasattr(log, "player_id") else log["player_id"]
+        season = str(log.season) if hasattr(log, "season") else str(log.get("season", ""))
+        grouped[(pid, season)].append((i, log))
+
+    seq_list: list[np.ndarray] = []
+    ctx_list: list[np.ndarray] = []
+    y05_list: list[int] = []
+    y15_list: list[int] = []
+
+    ctx_cols: list[str] | None = None
+    _excluded = {"player_id", "game_pk", "date"}
+    _numeric_types = (int, float)
+
+    def _ctx_is_numeric(fr: dict, k: str) -> bool:
+        v = fr.get(k)
+        return isinstance(v, _numeric_types) or v is None
+
+    _sample_cols = None
+    for fr in feature_matrix[:100]:
+        if _sample_cols is None:
+            _sample_cols = set(fr.keys()) - _excluded
+        _sample_cols = {k for k in _sample_cols if k in fr and _ctx_is_numeric(fr, k)}
+    ctx_cols = sorted(_sample_cols) if _sample_cols else []
+
+    for (pid, season), entries in grouped.items():
+        entries.sort(key=lambda e: e[1].date if hasattr(e[1], "date") else e[1]["date"])
+        indices = [e[0] for e in entries]
+        vecs = [_feat_vec(e[1]) for e in entries]
+
+        for pos in range(seq_len, len(vecs)):
+            idx = indices[pos]
+            log = game_logs[idx]
+            log_pid = log.player_id if hasattr(log, "player_id") else log["player_id"]
+            log_gpk = log.game_pk if hasattr(log, "game_pk") else log["game_pk"]
+
+            feat_row = feat_index.get((log_pid, log_gpk))
+            if feat_row is None:
+                continue
+
+            target_row = target_index.get((log_pid, log_gpk))
+            if target_row is None:
+                continue
+
+            seq = vecs[pos - seq_len: pos]
+            seq_list.append(np.array(seq, dtype=np.float32))
+            ctx_vec = np.array([feat_row[c] or 0.0 for c in ctx_cols], dtype=np.float32)
+            ctx_list.append(ctx_vec)
+            y05_list.append(target_row.get("target_0.5", 0))
+            y15_list.append(target_row.get("target_1.5", 0))
+
+    X_seq = np.stack(seq_list)
+    X_ctx = np.stack(ctx_list)
+    y_05 = np.array(y05_list, dtype=np.int32)
+    y_15 = np.array(y15_list, dtype=np.int32)
+
+    flat_seq = X_seq.reshape(-1, N_STATS)
+    if stats_mean is None:
+        stats_mean = flat_seq.mean(axis=0)
+        stats_std = flat_seq.std(axis=0) + 1e-8
+    flat_seq = (flat_seq - stats_mean) / stats_std
+    X_seq = flat_seq.reshape(-1, seq_len, N_STATS)
+
+    if feat_mean is None:
+        feat_mean = X_ctx.mean(axis=0)
+        feat_std = X_ctx.std(axis=0) + 1e-8
+        feat_std[feat_std == 0] = 1.0
+    X_ctx = (X_ctx - feat_mean) / feat_std
+    X_ctx = np.nan_to_num(X_ctx, nan=0.0)
+
+    return X_seq, X_ctx, y_05, y_15, stats_mean, stats_std, feat_mean, feat_std
+
+
+def train_multi_task_model(
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
+    y_05: np.ndarray,
+    y_15: np.ndarray,
+    hidden_dim: int = 64,
+    n_layers: int = 2,
+    dropout: float = 0.3,
+    learning_rate: float = 1e-3,
+    epochs: int = 50,
+    batch_size: int = 256,
+    early_stop_patience: int = 8,
+    l2_reg: float = 1e-5,
+    seed: int = 42,
+    verbose: bool = True,
+) -> tuple[MultiTaskHybridPredictor, dict[str, Any]]:
+    """Train a ``MultiTaskHybridPredictor`` with two losses."""
+    mx.random.seed(seed)
+    n_samples = X_seq.shape[0]
+    n_stats = X_seq.shape[2]
+    n_context = X_ctx.shape[1]
+    steps_per_epoch = max(1, n_samples // batch_size)
+    total_steps = epochs * steps_per_epoch
+
+    model = MultiTaskHybridPredictor(
+        n_stats=n_stats,
+        n_context=n_context,
+        hidden_dim=hidden_dim,
+        n_layers=n_layers,
+        dropout=dropout,
+    )
+
+    lr_schedule = optim.cosine_decay(
+        learning_rate, total_steps, end=learning_rate * 0.01,
+    )
+    optimizer = optim.Adam(learning_rate=lr_schedule)
+
+    # Per-target class weights
+    n_pos_05 = int(y_05.sum())
+    n_neg_05 = int(len(y_05) - n_pos_05)
+    pw_05 = n_neg_05 / n_pos_05 if n_pos_05 > 0 else 1.0
+
+    n_pos_15 = int(y_15.sum())
+    n_neg_15 = int(len(y_15) - n_pos_15)
+    pw_15 = n_neg_15 / n_pos_15 if n_pos_15 > 0 else 1.0
+
+    def loss_fn(
+        xs: mx.array, xc: mx.array, y05: mx.array, y15: mx.array,
+    ) -> mx.array:
+        logits_05, logits_15 = model(xs, xc)
+        loss_05 = nn.losses.binary_cross_entropy(logits_05, y05)
+        loss_05 = loss_05 * mx.where(y05 > 0.5, pw_05, 1.0)
+        loss_15 = nn.losses.binary_cross_entropy(logits_15, y15)
+        loss_15 = loss_15 * mx.where(y15 > 0.5, pw_15, 1.0)
+        base_loss = loss_05.mean() + loss_15.mean()
+        l2 = sum((p * p).sum() for _, p in tree_flatten(model.parameters()))
+        return base_loss + l2_reg * l2
+
+    loss_and_grad_fn = nn.value_and_grad(model, loss_fn)
+
+    best_loss = float("inf")
+    patience = 0
+    rng = np.random.default_rng(seed)
+
+    for epoch in range(epochs):
+        model.train()
+        perm = rng.permutation(n_samples)
+        Xs_shuf = X_seq[perm]
+        Xc_shuf = X_ctx[perm]
+        y05_shuf = y_05[perm]
+        y15_shuf = y_15[perm]
+
+        epoch_loss = 0.0
+        n_batches = 0
+
+        for start in range(0, n_samples, batch_size):
+            end = min(start + batch_size, n_samples)
+            xs_batch = mx.array(Xs_shuf[start:end])
+            xc_batch = mx.array(Xc_shuf[start:end])
+            y05_batch = mx.array(y05_shuf[start:end, np.newaxis])
+            y15_batch = mx.array(y15_shuf[start:end, np.newaxis])
+
+            loss, grads = loss_and_grad_fn(xs_batch, xc_batch, y05_batch, y15_batch)
+            grads = tree_unflatten([
+                (k, mx.clip(v, -5.0, 5.0))
+                for k, v in tree_flatten(grads)
+            ])
+            optimizer.update(model, grads)
+            mx.eval(model.parameters(), optimizer.state)
+
+            epoch_loss += loss.item()
+            n_batches += 1
+
+        avg_loss = epoch_loss / n_batches
+
+        if avg_loss < best_loss - 1e-6:
+            best_loss = avg_loss
+            patience = 0
+        else:
+            patience += 1
+            if patience >= early_stop_patience:
+                if verbose:
+                    print(f"    Early stop at epoch {epoch + 1}")
+                break
+
+        if verbose and (epoch + 1) % 10 == 0:
+            print(f"    Epoch {epoch + 1}/{epochs}  loss={avg_loss:.4f}")
+
+    metadata = {
+        "arch": "MultiTaskHybridPredictor",
+        "n_stats": n_stats,
+        "n_context": n_context,
+        "hidden_dim": hidden_dim,
+        "n_layers": n_layers,
+        "dropout": dropout,
+        "learning_rate": learning_rate,
+        "epochs_trained": epoch + 1,
+        "batch_size": batch_size,
+        "l2_reg": l2_reg,
+        "n_train": n_samples,
+    }
+    return model, metadata
+
+
+def predict_multi_task_model(
+    model: MultiTaskHybridPredictor,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return (proba_05, proba_15) for the multi-task model."""
+    model.eval()
+    n = X_seq.shape[0]
+    batch_size = 1024
+    p05_list: list[np.ndarray] = []
+    p15_list: list[np.ndarray] = []
+
+    for start in range(0, n, batch_size):
+        end = min(start + batch_size, n)
+        xs = mx.array(X_seq[start:end])
+        xc = mx.array(X_ctx[start:end])
+        logits_05, logits_15 = model(xs, xc)
+        p05_list.append(np.asarray(mx.sigmoid(logits_05)).reshape(-1))
+        p15_list.append(np.asarray(mx.sigmoid(logits_15)).reshape(-1))
+
+    return np.concatenate(p05_list), np.concatenate(p15_list)
+
+
+def save_multi_task_model(
+    model: MultiTaskHybridPredictor,
+    directory: str,
+    stats_mean: np.ndarray | None,
+    stats_std: np.ndarray | None,
+    feat_mean: np.ndarray | None,
+    feat_std: np.ndarray | None,
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    """Save a trained multi-task model to disk."""
+    os.makedirs(directory, exist_ok=True)
+    weights = _flatten_params(model.parameters())
+    mx.save_safetensors(os.path.join(directory, "model.safetensors"), weights)
+    for name, arr in [("stats_mean", stats_mean), ("stats_std", stats_std),
+                       ("feat_mean", feat_mean), ("feat_std", feat_std)]:
+        if arr is not None:
+            np.save(os.path.join(directory, f"{name}.npy"), arr)
+    config = {
+        "arch": "MultiTaskHybridPredictor",
+        "n_stats": N_STATS,
+        "hidden_dim": model.gru.hidden_size,
+        "dropout": 0.3,
+    }
+    if metadata:
+        config.update(metadata)
+    with open(os.path.join(directory, "config.json"), "w") as f:
+        json.dump(config, f, indent=2)
+    return directory
+
+
+def load_multi_task_model(
+    directory: str,
+) -> tuple[MultiTaskHybridPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    """Load a multi-task model saved by ``save_multi_task_model``."""
+    with open(os.path.join(directory, "config.json")) as f:
+        config = json.load(f)
+
+    model = MultiTaskHybridPredictor(
+        n_stats=config.get("n_stats", N_STATS),
+        n_context=config.get("n_context", 64),
+        hidden_dim=config.get("hidden_dim", 64),
+        n_layers=config.get("n_layers", 2),
+        dropout=config.get("dropout", 0.3),
+    )
+    model.load_weights(os.path.join(directory, "model.safetensors"), strict=False)
+
+    def _load_arr(name: str) -> np.ndarray:
+        path = os.path.join(directory, name)
+        return np.load(path) if os.path.isfile(path) else np.array([])
+
+    stats_mean = _load_arr("stats_mean.npy")
+    stats_std = _load_arr("stats_std.npy")
+    feat_mean = _load_arr("feat_mean.npy")
+    feat_std = _load_arr("feat_std.npy")
+    return model, stats_mean, stats_std, feat_mean, feat_std, config
