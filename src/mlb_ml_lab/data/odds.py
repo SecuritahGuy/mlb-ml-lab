@@ -16,12 +16,14 @@ Usage::
 from __future__ import annotations
 
 import json
+import os
 import re
 import urllib.request
 from datetime import date, timedelta
 from typing import Any
 
 SBR_BASE = "https://www.sportsbookreview.com/betting-odds/mlb-baseball/"
+ODDS_CACHE_DIR = "data/cache/sbr_odds"
 
 # SBR uses different abbreviations than the MLB API for some teams
 SBR_TEAM_MAP: dict[str, str] = {
@@ -86,7 +88,7 @@ def fetch_game_odds(
         .get("pageProps", {})
         .get("oddsTables", [{}])[0]
         .get("oddsTableModel", {})
-    )
+    ) if parsed.get("props", {}).get("pageProps", {}).get("oddsTables") else {}
     game_rows = otm.get("gameRows", [])
     sportsbooks = otm.get("sportsbooks", [])
 
@@ -99,21 +101,26 @@ def fetch_game_odds(
 
     results: list[dict[str, Any]] = []
     for game in game_rows:
-        gv = game["gameView"]
-        odds_view = game["oddsViews"][sb_idx]
+        gv = game.get("gameView")
+        odds_views = game.get("oddsViews", [])
+        if gv is None or sb_idx >= len(odds_views) or odds_views[sb_idx] is None:
+            continue
+        odds_view = odds_views[sb_idx]
         cur = odds_view.get("currentLine", {})
         open_line = odds_view.get("openingLine", {})
 
         away_abbrev = gv["awayTeam"]["shortName"]
         home_abbrev = gv["homeTeam"]["shortName"]
 
+        away_starter = gv.get("awayStarter") or {}
+        home_starter = gv.get("homeStarter") or {}
         results.append({
             "game_id": gv["gameId"],
             "date": date_str,
             "away_team": _parse_sbr_abbrev(away_abbrev),
             "home_team": _parse_sbr_abbrev(home_abbrev),
-            "away_pitcher": gv.get("awayStarter", {}).get("lastName", ""),
-            "home_pitcher": gv.get("homeStarter", {}).get("lastName", ""),
+            "away_pitcher": away_starter.get("lastName", ""),
+            "home_pitcher": home_starter.get("lastName", ""),
             "away_ml": cur.get("awayOdds"),
             "home_ml": cur.get("homeOdds"),
             "away_spread": cur.get("awaySpread"),
@@ -175,3 +182,29 @@ def fetch_league_avg_odds(
                 total_prob += prob
                 count += 1
     return {"avg_implied_prob": total_prob / count if count > 0 else 0.0}
+
+
+def load_cached_odds(date_str: str) -> list[dict[str, Any]] | None:
+    """Load SBR odds from disk cache."""
+    path = os.path.join(ODDS_CACHE_DIR, f"{date_str}.json")
+    if os.path.isfile(path):
+        with open(path) as f:
+            return json.load(f)
+    return None
+
+
+def save_cached_odds(date_str: str, odds: list[dict[str, Any]]) -> None:
+    """Save SBR odds to disk cache."""
+    os.makedirs(ODDS_CACHE_DIR, exist_ok=True)
+    cache_path = os.path.join(ODDS_CACHE_DIR, f"{date_str}.json")
+    with open(cache_path, "w") as f:
+        json.dump(odds, f, default=str)
+
+
+def load_all_cached_odds(dates: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """Load cached odds for a list of dates. Missing dates return empty lists."""
+    result: dict[str, list[dict[str, Any]]] = {}
+    for ds in dates:
+        odds = load_cached_odds(ds)
+        result[ds] = odds if odds is not None else []
+    return result

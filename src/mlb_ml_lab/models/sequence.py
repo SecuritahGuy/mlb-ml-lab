@@ -435,7 +435,10 @@ class HybridHitPredictor(nn.Module):
 
         [B,T,F] → GRU → [B,H]  ─┐
                                  ├→ Concat → [B,2H] → Linear → [B,1]
-        [B,C] → Linear+ReLU ────┘
+        [B,C] → [Gate] → Linear+ReLU ────┘
+
+    When ``use_gating=True``, a learned sigmoid gate is applied to context
+    features before the MLP, performing soft feature selection.
     """
 
     def __init__(
@@ -445,9 +448,13 @@ class HybridHitPredictor(nn.Module):
         hidden_dim: int = 64,
         n_layers: int = 2,
         dropout: float = 0.3,
+        use_gating: bool = False,
     ):
         super().__init__()
         self.gru = nn.GRU(n_stats, hidden_dim, n_layers)
+        self.use_gating = use_gating
+        if use_gating:
+            self.feature_gate = nn.Linear(n_context, n_context)
         self.context_net = nn.Sequential(
             nn.Linear(n_context, hidden_dim),
             nn.ReLU(),
@@ -456,10 +463,13 @@ class HybridHitPredictor(nn.Module):
         self.head = nn.Linear(hidden_dim * 2, 1)
 
     def __call__(self, seq: mx.array, ctx: mx.array) -> mx.array:
-        out = self.gru(seq)              # [B, T, H]
-        last = out[:, -1, :]              # [B, H]
+        out = self.gru(seq)
+        last = out[:, -1, :]
         last = self.dropout(last)
-        ctx_emb = self.context_net(ctx)   # [B, H]
+        if self.use_gating:
+            gates = mx.sigmoid(self.feature_gate(ctx))
+            ctx = ctx * gates
+        ctx_emb = self.context_net(ctx)
         combined = mx.concatenate([last, ctx_emb], axis=-1)
         return self.head(combined)
 
@@ -576,6 +586,7 @@ def train_hybrid_model(
     hidden_dim: int = 64,
     n_layers: int = 2,
     dropout: float = 0.3,
+    use_gating: bool = False,
     learning_rate: float = 1e-3,
     epochs: int = 50,
     batch_size: int = 256,
@@ -598,6 +609,7 @@ def train_hybrid_model(
         hidden_dim=hidden_dim,
         n_layers=n_layers,
         dropout=dropout,
+        use_gating=use_gating,
     )
 
     lr_schedule = optim.cosine_decay(

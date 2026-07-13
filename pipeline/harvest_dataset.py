@@ -22,6 +22,7 @@ from typing import Any
 
 from mlb_ml_lab.data.meteostat_weather import MeteostatWeather
 from mlb_ml_lab.data.weather import INDOOR_VENUES
+from mlb_ml_lab.data.odds import load_cached_odds, save_cached_odds, fetch_game_odds
 
 from mlb_ml_lab import (
     MlbClient,
@@ -457,6 +458,80 @@ def compute_league_stats(
 
 
 # ---------------------------------------------------------------------------
+# SBR odds loading for feature enrichment
+# ---------------------------------------------------------------------------
+
+def ensure_odds_for_dates(dates: list[str]) -> None:
+    """Fetch and cache SBR odds for any missing dates."""
+    to_fetch = [ds for ds in dates if load_cached_odds(ds) is None]
+    if not to_fetch:
+        print(f"  All {len(dates)} dates already cached")
+        return
+    print(f"  Fetching odds for {len(to_fetch)} uncached dates...")
+    for i, ds in enumerate(to_fetch):
+        odds = fetch_game_odds(ds)
+        save_cached_odds(ds, odds)
+        if (i + 1) % 50 == 0:
+            print(f"    {i + 1}/{len(to_fetch)}")
+        time.sleep(0.5)
+    print(f"  Complete: cached odds for {len(to_fetch)} dates")
+
+
+def build_odds_by_game(
+    game_logs: list[PlayerGameLog],
+    teams: list[dict[str, Any]],
+) -> dict[tuple[int, int], dict[str, Any]]:
+    """Build (team_id, game_pk) → {team_ml, opp_ml} index from cached SBR odds."""
+    # Team ID → abbreviation mapping
+    id_to_abbrev: dict[int, str] = {}
+    for t in teams:
+        if t.get("sport", {}).get("id") == 1:
+            id_to_abbrev[t["id"]] = t.get("abbreviation", "")
+
+    # Collect unique dates from game logs
+    all_dates = sorted(set(lg.date[:10] for lg in game_logs))
+    ensure_odds_for_dates(all_dates)
+
+    # Load all odds and build date+team index
+    odds_index: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for ds in all_dates:
+        odds_list = load_cached_odds(ds) or []
+        for g in odds_list:
+            odds_index[(ds, g["away_team"], g["home_team"])] = g
+
+    # Build per-game index
+    odds_by_game: dict[tuple[int, int], dict[str, Any]] = {}
+    matched = 0
+    unmatched = 0
+    for lg in game_logs:
+        key = (lg.team_id, lg.game_pk)
+        if key in odds_by_game:
+            continue
+        ds = lg.date[:10]
+        team_abbrev = id_to_abbrev.get(lg.team_id, "")
+        opp_abbrev = id_to_abbrev.get(lg.opponent_id, "")
+        if not team_abbrev or not opp_abbrev:
+            unmatched += 1
+            continue
+
+        odds_row = odds_index.get((ds, opp_abbrev, team_abbrev))
+        if odds_row is None:
+            odds_row = odds_index.get((ds, team_abbrev, opp_abbrev))
+        if odds_row is None:
+            unmatched += 1
+            continue
+
+        if odds_row["home_team"] == team_abbrev:
+            odds_by_game[key] = {"team_ml": odds_row["home_ml"], "opp_ml": odds_row["away_ml"]}
+        else:
+            odds_by_game[key] = {"team_ml": odds_row["away_ml"], "opp_ml": odds_row["home_ml"]}
+        matched += 1
+
+    print(f"  Odds matched: {matched} games, {unmatched} unmatched")
+    return odds_by_game
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -566,6 +641,11 @@ def main() -> None:
 
     # ── Stage 12: Build Feature Matrix ───────────────────────────────────
     print("\n=== Stage 12: Building Feature Matrix ===")
+
+    # ── Stage 11c: SBR odds for market features ───────────────────────
+    print("\n=== Stage 11c: Market Odds (SBR) ===")
+    odds_by_game = build_odds_by_game(game_logs, teams)
+
     # We need to build per-season so game_contexts match
     all_feature_rows: list[dict[str, Any]] = []
     all_targets: list[dict[str, Any]] = []
@@ -625,6 +705,7 @@ def main() -> None:
                 "bullpen_stats": bullpen_stats.get(s, {}),
                 "game_pace_stats": s_game_pace,
                 "team_leaders": s_team_leaders,
+                "odds_by_game": odds_by_game,
             },
         )
         tgt = make_targets(season_logs)
