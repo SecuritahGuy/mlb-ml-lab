@@ -1,375 +1,312 @@
-"""Walk-forward backtest across multiple seasons.
+"""Walk-forward backtesting with flat-stake betting simulation.
 
-Fetches game logs and features for 2021–2025, runs walk-forward
-prediction for every out-of-sample game, then simulates flat-stake
-betting and reports ROI, drawdown, and calibration.
+Runs the XGB+hybrid ensemble walk-forward, saves per-game predictions,
+then simulates flat $1 bets at -110 odds across multiple confidence
+thresholds.
 
 Usage:
     poetry run python pipeline/backtest.py
-
-First run takes ~30-45 minutes (API calls cached to disk).
-Subsequent runs are seconds.
 """
 
 from __future__ import annotations
 
-import json
-import os
 import warnings
+from collections import defaultdict
 from typing import Any
 
+import numpy as np
 from sklearn.exceptions import ConvergenceWarning
+from sklearn.impute import SimpleImputer
 
-from mlb_ml_lab import (
-    MlbClient,
-    PlayerGameLog,
-    build_feature_matrix,
-    describe_features,
-    make_targets,
+from mlb_ml_lab import PlayerGameLog, load_feature_data, load_game_logs
+from mlb_ml_lab.models.sequence import (
+    SEQUENCE_LEN,
+    _feat_vec,
+    build_hybrid_sequences,
+    predict_hybrid_model,
+    train_hybrid_model,
 )
-from mlb_ml_lab.evaluation.backtest import (
-    BetResult,
-    calibration_buckets,
-    print_backtest_report,
-    simulate_bets,
-    walk_forward_predict,
-)
-from mlb_ml_lab.models.train import MODEL_HELP
+from mlb_ml_lab.models.train import _build_model, _feature_columns
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
+CACHED_DATASET = "data/datasets/full_2021_2026_30teams"
 TRAIN_SEASONS = [2021, 2022, 2023, 2024, 2025]
-DEFAULT_ODDS = 1.909  # -110 US
-OUTPUT_DIR = "data/backtest"
+SEED = 42
+ODDS = -110  # standard betting odds
+BREAKEVEN = abs(ODDS) / (abs(ODDS) + 100)  # 0.524 for -110
+DECIMAL_ODDS = 1 + 100 / abs(ODDS)  # 1.909 for -110
+
+_TUNED_XGB = {
+    "n_estimators": 500, "max_depth": 5, "learning_rate": 0.01,
+    "subsample": 0.8, "colsample_bytree": 1.0, "min_child_weight": 1,
+}
+
+
+def _merge_rows(feat_rows: list[dict], tgt_rows: list[dict], target_col: str) -> list[dict]:
+    merged: list[dict] = []
+    for fr, tr in zip(feat_rows, tgt_rows):
+        row = dict(fr)
+        row[target_col] = tr[target_col]
+        merged.append(row)
+    return merged
+
+
+def _extract_xgb(
+    merged_rows: list[dict],
+    target_col: str,
+    cols: list[str] | None = None,
+    imputer: SimpleImputer | None = None,
+) -> tuple[np.ndarray, np.ndarray, list[str], SimpleImputer]:
+    if cols is None:
+        cols = [c for c in _feature_columns(merged_rows) if c != target_col]
+
+    y = np.array([r[target_col] for r in merged_rows], dtype=np.int32)
+    x = np.zeros((len(merged_rows), len(cols)), dtype=np.float64)
+    for i, r in enumerate(merged_rows):
+        for j, c in enumerate(cols):
+            v = r.get(c)
+            x[i, j] = float(v) if v is not None else float("nan")
+
+    if imputer is None:
+        imputer = SimpleImputer(strategy="median")
+        x = imputer.fit_transform(x)
+    else:
+        x = imputer.transform(x)
+    x = np.nan_to_num(x, nan=0.0)
+    return x, y, cols, imputer
+
+
+def backtest(
+    predictions: list[dict],
+    thresholds: list[float] | None = None,
+) -> list[dict]:
+    """Run flat-stake betting simulation on walk-forward predictions.
+
+    Each prediction dict must have:
+        - ``prob``: predicted probability
+        - ``actual``: ground truth (0 or 1)
+        - ``target``: e.g. "target_0.5" or "target_1.5"
+
+    Returns a list of result dicts, one per threshold.
+    """
+    if thresholds is None:
+        thresholds = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90]
+
+    results: list[dict] = []
+    for thresh in thresholds:
+        filtered = [p for p in predictions if p["prob"] >= thresh]
+        if not filtered:
+            results.append({
+                "threshold": thresh,
+                "n_bets": 0,
+                "win_rate": 0.0,
+                "total_pnl": 0.0,
+                "roi": 0.0,
+                "avg_prob": 0.0,
+                "ev_per_bet": 0.0,
+            })
+            continue
+
+        n = len(filtered)
+        wins = sum(1 for p in filtered if p["actual"] == 1)
+        losses = n - wins
+        win_rate = wins / n
+
+        net_pnl = wins * (DECIMAL_ODDS - 1) - losses
+        roi = net_pnl / n * 100
+
+        ev_per_bet = net_pnl / n
+
+        avg_prob = float(np.mean([p["prob"] for p in filtered]))
+
+        results.append({
+            "threshold": thresh,
+            "n_bets": n,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": round(win_rate, 4),
+            "breakeven": BREAKEVEN,
+            "total_pnl": round(net_pnl, 2),
+            "roi": round(roi, 2),
+            "avg_prob": round(avg_prob, 4),
+            "ev_per_bet": round(ev_per_bet, 4),
+        })
+
+    return results
 
 
 def main() -> None:
-    client = MlbClient()
+    print(f"Loading data from {CACHED_DATASET}...")
+    raw_logs = load_game_logs(CACHED_DATASET)
+    feature_matrix, targets_list, meta = load_feature_data(CACHED_DATASET)
+    print(f"  {len(raw_logs)} game logs, {len(feature_matrix)} feature rows, "
+          f"{len(targets_list)} targets")
 
-    all_team_ids = [t["id"] for t in client.get_teams()]
-    print(f"Found {len(all_team_ids)} teams")
+    game_logs: list[PlayerGameLog] = []
+    for d in raw_logs:
+        game_logs.append(PlayerGameLog(**{
+            k: v for k, v in d.items()
+            if k in PlayerGameLog.__dataclass_fields__
+        }))
 
-    all_game_logs: list[PlayerGameLog] = []
-    all_player_ids: set[int] = set()
+    targets: list[dict] = targets_list
+    features: list[dict] = feature_matrix
 
-    for season in TRAIN_SEASONS:
-        print(f"\n{'='*60}")
-        print(f"Season {season}")
-        print(f"{'='*60}")
+    feat_by_key: dict[tuple[int, int], dict[str, Any]] = {}
+    for f in features:
+        feat_by_key[(f["player_id"], f["game_pk"])] = f
+    tgt_by_key: dict[tuple[int, int], dict[str, Any]] = {}
+    for t in targets:
+        tgt_by_key[(t["player_id"], t["game_pk"])] = t
 
-        roster_players: list[dict[str, Any]] = []
-        for tid in all_team_ids:
-            roster = client.get_roster(tid, season, roster_type="40Man")
-            for p in roster:
-                pos = (p.get("position") or {}).get("abbreviation", "")
-                if pos not in ("P", "", "Two-Way Player"):
-                    roster_players.append(p)
-                    all_player_ids.add(p["person"]["id"])
+    aligned_logs: list[PlayerGameLog] = []
+    aligned_feats: list[dict] = []
+    aligned_tgts: list[dict] = []
+    for lg in game_logs:
+        key = (lg.player_id, lg.game_pk)
+        fr = feat_by_key.get(key)
+        tr = tgt_by_key.get(key)
+        if fr is not None and tr is not None:
+            aligned_logs.append(lg)
+            aligned_feats.append(fr)
+            aligned_tgts.append(tr)
+    print(f"  Aligned: {len(aligned_logs)} games with both features + targets")
 
-        n_players = len(roster_players)
-        print(f"  {n_players} position players across {len(all_team_ids)} teams")
+    all_predictions: list[dict] = []
 
-        logs_this_season = 0
-        for i, p in enumerate(roster_players):
-            pid = p["person"]["id"]
-            try:
-                raw = client.get_player_game_log(pid, season=season)
-                for split in raw:
-                    all_game_logs.append(PlayerGameLog.from_split_dict(split))
-                    logs_this_season += 1
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass
-            if (i + 1) % 100 == 0:
-                print(f"    ... {i+1}/{n_players} players ({logs_this_season} game logs)")
+    for target_col in ("target_0.5", "target_1.5"):
+        print(f"\n{'=' * 60}")
+        print(f"Walk-forward ensemble — {target_col}")
+        print(f"{'=' * 60}")
 
-        print(f"  {logs_this_season} game log rows for season {season}")
+        for fold_idx in range(len(TRAIN_SEASONS) - 1):
+            train_cutoff = TRAIN_SEASONS[fold_idx]
+            test_season = TRAIN_SEASONS[fold_idx + 1]
 
-    print(f"\nTotal: {len(all_game_logs)} game log rows, "
-          f"{len(all_player_ids)} unique players")
+            train_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
+                          if int(t["date"][:4]) <= train_cutoff]
+            test_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
+                         if int(t["date"][:4]) == test_season]
+            train_tgt = [t for t in aligned_tgts if int(t["date"][:4]) <= train_cutoff]
+            test_tgt = [t for t in aligned_tgts if int(t["date"][:4]) == test_season]
+            train_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
+                          if int(t["date"][:4]) <= train_cutoff]
+            test_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
+                         if int(t["date"][:4]) == test_season]
 
-    print("\nFetching enriched schedules...")
-    schedule_lookups: dict[int, dict[str, Any]] = {}
-    for season in TRAIN_SEASONS:
-        sched = client.get_enriched_schedule(season)
-        schedule_lookups.update(sched)
-        print(f"  {season}: {len(sched)} games hydrated")
+            print(f"\n  Fold {fold_idx + 1}: train ≤{train_cutoff}, test={test_season}")
+            print(f"    Train: {len(train_logs)} logs, Test: {len(test_logs)} logs")
 
-    print("\nFetching opponent pitching stats...")
-    opp_ids = list({log.opponent_id for log in all_game_logs})
-    season_opp_pitching: dict[int, dict[str, Any]] = {}
-    for season in TRAIN_SEASONS:
-        try:
-            stats = client.get_team_pitching_stats(opp_ids, season)
-            season_opp_pitching.update(stats)
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-    print(f"  {len(season_opp_pitching)} team stat sets")
-
-    print("Fetching monthly pitching splits...")
-    monthly_pitching: dict[int, Any] = {}
-    for season in TRAIN_SEASONS:
-        try:
-            mp = client.get_team_pitching_monthly_stats(opp_ids, season)
-            monthly_pitching.update(mp)
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-    print(f"  {len(monthly_pitching)} monthly stat sets")
-
-    print("Fetching team fielding...")
-    team_fielding: dict[int, dict[str, Any]] = {}
-    for season in TRAIN_SEASONS:
-        try:
-            tf = client.get_team_fielding_stats(opp_ids, season)
-            team_fielding.update(tf)
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-    print(f"  {len(team_fielding)} fielding stat sets")
-
-    print("Fetching league stats...")
-    league_stats = {}
-    try:
-        all_hitting = client.get_team_hitting_stats(all_team_ids, TRAIN_SEASONS[-1])
-        league_stats = _compute_league_stats(all_hitting)
-    except Exception:  # pylint: disable=broad-exception-caught
-        pass
-    print(f"  {'populated' if league_stats else 'empty'}")
-
-    print("Fetching player details...")
-    player_details: dict[int, dict[str, Any]] = {}
-    for i, pid in enumerate(all_player_ids):
-        try:
-            player_details[pid] = client.get_player(pid, season=TRAIN_SEASONS[-1])
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-        if (i + 1) % 200 == 0:
-            print(f"    ... {i+1}/{len(all_player_ids)} players")
-    print(f"  {len(player_details)} player details")
-
-    print("Fetching bullpen stats...")
-    bullpen_stats: dict[int, dict[str, float]] = {}
-    for tid in opp_ids:
-        try:
-            bp = client.get_team_bullpen_stats(tid, TRAIN_SEASONS[-1])
-            if bp:
-                bullpen_stats[tid] = bp
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-    print(f"  {len(bullpen_stats)} bullpen stat sets")
-
-    print("Fetching game pace...")
-    game_pace_stats: dict[int, dict[str, float]] = {}
-    for tid in opp_ids:
-        try:
-            pace_rows = client.get_game_pace(TRAIN_SEASONS[-1], team_id=tid)
-            if pace_rows:
-                p = pace_rows[0]
-                game_pace_stats[tid] = {
-                    "time_per_game": p.get("timePerGame"),
-                    "pitches_per_game": p.get("pitchesPerGame"),
-                }
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-    print(f"  {len(game_pace_stats)} team pace records")
-
-    print("Fetching team leaders...")
-    team_leaders: dict[int, dict[str, float]] = {}
-    for tid in opp_ids:
-        try:
-            leaders = client.get_team_leaders(
-                tid, TRAIN_SEASONS[-1],
-                leader_categories=["battingAverage", "homeRuns", "runsBattedIn"],
-                limit=1,
+            Xs_tr, Xc_tr, y_tr, sm, ss, fm, fs = build_hybrid_sequences(
+                train_logs, train_feat, train_tgt, target_col=target_col,
             )
-            ld: dict[str, float] = {}
-            for entry in leaders:
-                cat = entry.get("leaderCategory", "")
-                leaders_list = entry.get("leaders", [])
-                val = leaders_list[0].get("value") if leaders_list else None
-                if val is not None:
-                    if "battingAverage" in cat:
-                        ld["top_avg"] = _parse_avg(val)
-                    elif "homeRuns" in cat:
-                        ld["top_hr"] = float(val)
-                    elif "runsBattedIn" in cat:
-                        ld["top_rbi"] = float(val)
-            if ld:
-                team_leaders[tid] = ld
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-    print(f"  {len(team_leaders)} team leader sets")
-
-    season_schedule = list(schedule_lookups.values())
-
-    print("\nBuilding feature matrix...")
-    feature_matrix = build_feature_matrix(
-        all_game_logs,
-        teams=client.get_teams(),
-        extra_kwargs={
-            "game_contexts": schedule_lookups,
-            "opponent_pitching": season_opp_pitching,
-            "monthly_pitching": monthly_pitching,
-            "team_fielding": team_fielding,
-            "player_details": player_details,
-            "league_stats": league_stats,
-            "season_schedule": season_schedule,
-            "bullpen_stats": bullpen_stats,
-            "game_pace_stats": game_pace_stats,
-            "team_leaders": team_leaders,
-        },
-    )
-    print(f"  {len(feature_matrix)} feature rows")
-    metas = describe_features()
-    print(f"  {len(metas)} feature columns registered")
-
-    feature_matrix.sort(key=lambda r: r["date"])
-
-    print("Building targets...")
-    targets = make_targets(all_game_logs)
-    print(f"  {len(targets)} target rows")
-
-    models_to_test = ["lgb", "xgb", "rf", "lr", "ensemble"]
-    targets_to_test = ["target_0.5", "target_1.5"]
-    prob_thresholds = [None, 0.6, 0.7, 0.8]
-
-    print(f"\n{'='*60}")
-    print("WALK-FORWARD BACKTEST")
-    print(f"{'='*60}")
-
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    for target_col in targets_to_test:
-        print(f"\n{'='*60}")
-        print(f"  Target: {target_col}")
-        print(f"{'='*60}")
-
-        for model_type in models_to_test:
-            print(f"\n  --- Model: {MODEL_HELP.get(model_type, model_type.upper())} ---")
-            label = MODEL_HELP.get(model_type, model_type.upper())
-
-            predictions = walk_forward_predict(
-                feature_matrix,
-                targets,
+            Xs_te, Xc_te, y_te, _, _, _, _ = build_hybrid_sequences(
+                test_logs, test_feat, test_tgt,
+                stats_mean=sm, stats_std=ss, feat_mean=fm, feat_std=fs,
                 target_col=target_col,
-                model_type=model_type if model_type != "ensemble" else "lgb",
-                n_splits=4,
             )
-            if not predictions:
-                print("    No predictions generated.")
+            if len(Xs_tr) == 0 or len(Xs_te) == 0:
+                print("    Skipping — no sequences")
                 continue
 
-            n_outcomes = len(predictions)
-            base_rate = sum(p.actual for p in predictions) / n_outcomes
-            print(f"    Out-of-sample predictions: {n_outcomes}")
-            print(f"    Base rate:                 {base_rate:.4f}")
+            train_merged = _merge_rows(train_feat, train_tgt, target_col)
+            test_merged = _merge_rows(test_feat, test_tgt, target_col)
 
-            thresholds_eval = prob_thresholds if model_type != "ensemble" else [None]
-            for thresh in thresholds_eval:
-                result = simulate_bets(
-                    predictions,
-                    decimal_odds=DEFAULT_ODDS,
-                    min_prob=thresh,
+            x_train, y_tr_xgb, xgb_cols, xgb_imputer = _extract_xgb(
+                train_merged, target_col,
+            )
+            x_test, y_te_xgb, _, _ = _extract_xgb(
+                test_merged, target_col, cols=xgb_cols, imputer=xgb_imputer,
+            )
+
+            # Train XGB
+            xgb_model = _build_model("xgb", SEED, params=_TUNED_XGB)
+            xgb_model.fit(x_train, y_tr_xgb)
+            xgb_te_proba = xgb_model.predict_proba(x_test)[:, 1]
+
+            # Train hybrid
+            hybrid_model, _ = train_hybrid_model(
+                Xs_tr, Xc_tr, y_tr,
+                hidden_dim=64, n_layers=2, dropout=0.2,
+                learning_rate=1e-3, epochs=60, batch_size=512,
+                verbose=False,
+            )
+            hybrid_te_proba = predict_hybrid_model(hybrid_model, Xs_te, Xc_te)
+
+            # Map XGB probabilities to hybrid keys
+            xgb_proba_map: dict[tuple[int, int], float] = {}
+            for i, row in enumerate(test_merged):
+                xgb_proba_map[(row["player_id"], row["game_pk"])] = float(xgb_te_proba[i])
+
+            # Build ensemble predictions for each hybrid test row
+            _keys_te: list[tuple[int, int]] = []
+            _feat_idx: dict[tuple[int, int], dict] = {}
+            for f in test_feat:
+                _feat_idx[(f["player_id"], f["game_pk"])] = f
+
+            _grouped: dict[tuple[int, str], list[tuple[int, Any]]] = defaultdict(list)
+            for i, lg in enumerate(test_logs):
+                _grouped[(lg.player_id, str(lg.season))].append((i, lg))
+
+            for (pid, season), entries in _grouped.items():
+                entries.sort(key=lambda e: e[1].date)
+                indices = [e[0] for e in entries]
+                vecs = [_feat_vec(e[1]) for e in entries]
+                for pos in range(SEQUENCE_LEN, len(vecs)):
+                    idx = indices[pos]
+                    lg = test_logs[idx]
+                    if _feat_idx.get((lg.player_id, lg.game_pk)):
+                        _keys_te.append((lg.player_id, lg.game_pk))
+
+            for i, (pid, gpk) in enumerate(_keys_te):
+                hp = float(hybrid_te_proba[i])
+                xp = xgb_proba_map.get((pid, gpk), hp)
+                ensemble_prob = (hp + xp) / 2.0
+                all_predictions.append({
+                    "player_id": pid,
+                    "game_pk": gpk,
+                    "target": target_col,
+                    "prob": ensemble_prob,
+                    "actual": int(y_te[i]),
+                    "fold": fold_idx + 1,
+                    "test_season": test_season,
+                })
+
+            n_ens = len(_keys_te)
+            fold_auc = float(np.nan) if n_ens == 0 else float(np.nan)
+            if n_ens > 0:
+                from sklearn.metrics import roc_auc_score
+                fold_auc = roc_auc_score(
+                    [p["actual"] for p in all_predictions[-n_ens:]],
+                    [p["prob"] for p in all_predictions[-n_ens:]],
                 )
-                result.target_col = target_col
-                result.model_type = label
-                result.n_seasons = len(TRAIN_SEASONS)
-                cal = calibration_buckets(predictions)
+            print(f"    Ensemble AUC: {fold_auc:.4f}  ({n_ens} games)")
 
-                print_backtest_report(result, calibration=cal)
+    # ── Backtest simulation ──────────────────────────────────────
+    print(f"\n{'=' * 60}")
+    print("Backtest simulation (flat $1 bets at -110 odds)")
+    print(f"{'=' * 60}")
 
-                safe_label = label.lower().replace(" ", "_")
-                safe_thresh = f"p{int(thresh*100)}" if thresh else "breakeven"
-                report_path = os.path.join(
-                    OUTPUT_DIR,
-                    f"{target_col}_{safe_label}_{safe_thresh}.json",
-                )
-                _save_report(result, cal, report_path)
+    for target_col in ("target_0.5", "target_1.5"):
+        preds = [p for p in all_predictions if p["target"] == target_col]
+        print(f"\n  --- {target_col} ({len(preds)} predictions across all folds) ---")
 
-    print(f"\nReports saved to {OUTPUT_DIR}/")
-    print("Done.")
+        results = backtest(preds)
+        print(f"  {'Thresh':>6}  {'Bets':>6}  {'WinRate':>8}  {'BE':>5}  "
+              f"{'P&L':>8}  {'ROI':>6}  {'AvgProb':>8}")
+        print(f"  {'-'*6}  {'-'*6}  {'-'*8}  {'-'*5}  "
+              f"{'-'*8}  {'-'*6}  {'-'*8}")
+        for r in results:
+            if r["n_bets"] == 0:
+                continue
+            print(f"  {r['threshold']:>6.2f}  {r['n_bets']:>6}  "
+                  f"{r['win_rate']:>8.4f}  {r['breakeven']:>5.3f}  "
+                  f"{r['total_pnl']:>8.2f}  {r['roi']:>6.2f}%  "
+                  f"{r['avg_prob']:>8.4f}")
 
-
-def _save_report(
-    result: BetResult,
-    calibration: list[dict[str, float]] | None,
-    path: str,
-) -> None:
-    data = {
-        "total_bets": result.total_bets,
-        "wins": result.wins,
-        "losses": result.losses,
-        "win_rate": result.win_rate,
-        "total_stake": result.total_stake,
-        "total_profit": result.total_profit,
-        "roi": result.roi,
-        "max_drawdown": result.max_drawdown,
-        "avg_prob": result.predicted_prob_mean,
-        "odds": result.avg_odds,
-        "threshold": result.threshold,
-        "stake_per_bet": result.stake_per_bet,
-        "target_col": result.target_col,
-        "model_type": result.model_type,
-        "n_seasons": result.n_seasons,
-    }
-    if calibration:
-        data["calibration"] = calibration
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-
-
-def _parse_avg(val: str | float | None) -> float | None:
-    if val is None or val == "" or val == ".---":
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _compute_league_stats(
-    hitting: dict[int, dict[str, Any]],
-) -> dict[str, float]:
-    total_ab = 0
-    total_h = 0
-    total_bb = 0
-    total_1b = 0
-    total_2b = 0
-    total_3b = 0
-    total_hr = 0
-    total_r = 0
-    total_g = 0
-    for stat in hitting.values():
-        ab = int(stat.get("atBats", 0))
-        h = int(stat.get("hits", 0))
-        bb = int(stat.get("baseOnBalls", 0))
-        _2b = int(stat.get("doubles", 0))
-        _3b = int(stat.get("triples", 0))
-        hr = int(stat.get("homeRuns", 0))
-        r = int(stat.get("runs", 0))
-        g = int(stat.get("gamesPlayed", 0))
-        total_ab += ab
-        total_h += h
-        total_bb += bb
-        total_2b += _2b
-        total_3b += _3b
-        total_hr += hr
-        total_r += r
-        total_g += g
-        total_1b += h - _2b - _3b - hr
-
-    if total_ab == 0:
-        return {}
-
-    avg = round(total_h / total_ab, 3)
-    obp = round((total_h + total_bb) / (total_ab + total_bb), 3)
-    slg = round((total_1b + 2 * total_2b + 3 * total_3b + 4 * total_hr) / total_ab, 3)
-    return {
-        "avg": avg,
-        "obp": obp,
-        "slg": slg,
-        "ops": round(obp + slg, 3),
-        "runs_per_game": round(total_r / max(total_g, 1), 2),
-    }
+    print("\nDone.")
 
 
 if __name__ == "__main__":
