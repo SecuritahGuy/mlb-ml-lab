@@ -264,13 +264,13 @@ def fetch_statcast_data(
     expected_stats: list[dict[str, str]] = []
     for s in seasons:
         try:
-            sb = client.get_statcast_batters(season=s, min_qual="y")
+            sb = client.get_statcast_batters(season=s, min_qual="10")
             if sb:
                 statcast_batters.extend(sb)
         except Exception:  # pylint: disable=broad-exception-caught
             pass
         try:
-            es = client.get_expected_stats(season=s, min_qual="y")
+            es = client.get_expected_stats(season=s, min_qual="10")
             if es:
                 expected_stats.extend(es)
         except Exception:  # pylint: disable=broad-exception-caught
