@@ -1050,3 +1050,610 @@ def load_multi_task_model(
     feat_mean = _load_arr("feat_mean.npy")
     feat_std = _load_arr("feat_std.npy")
     return model, stats_mean, stats_std, feat_mean, feat_std, config
+
+
+# ---------------------------------------------------------------------------
+# DCN (Deep & Cross Network) model
+# ---------------------------------------------------------------------------
+
+
+class CrossNetwork(nn.Module):
+    """Cross network for explicit bounded-degree feature interactions.
+
+    Each layer::
+
+        x_{l+1} = x_0 ⊙ (W_l @ x_l + b_l) + x_l
+    """
+
+    def __init__(self, dim: int, num_layers: int = 2):
+        super().__init__()
+        self._num = num_layers
+        for i in range(num_layers):
+            setattr(self, f"cross_{i}", nn.Linear(dim, dim, bias=True))
+
+    def __call__(self, x: mx.array) -> mx.array:
+        x_0 = x
+        x_l = x_0
+        for i in range(self._num):
+            w = getattr(self, f"cross_{i}")
+            x_l = x_0 * w(x_l) + x_l
+        return x_l
+
+
+class DCNMultiTaskPredictor(nn.Module):
+    """GRU over sequences + lightweight DCN over context → two heads.
+
+    Projects 91-dim context down to *cross_dim* first, then applies a
+    small cross network at that dimension — no deep tower.  This keeps
+    parameter count comparable to the original Linear+ReLU context path
+    while adding explicit feature interactions.
+
+    Architecture::
+
+        [B,T,F] → GRU → [B,H]  ─┐
+                                 ├→ Concat → head_05 → [B,1]
+        [B,C] → Proj(cross_dim) ─┤
+              → CrossNet ────────┘
+                                           head_15 → [B,1]
+    """
+
+    def __init__(
+        self,
+        n_stats: int = N_STATS,
+        n_context: int = 64,
+        hidden_dim: int = 64,
+        n_layers: int = 2,
+        dropout: float = 0.3,
+        cross_dim: int = 32,
+        num_cross_layers: int = 2,
+    ):
+        super().__init__()
+        self.gru = nn.GRU(n_stats, hidden_dim, n_layers)
+        self.ctx_proj = nn.Linear(n_context, cross_dim)
+        self.cross_net = CrossNetwork(cross_dim, num_cross_layers)
+        self.dropout = nn.Dropout(dropout)
+        self.head_05 = nn.Linear(hidden_dim + cross_dim, 1)
+        self.head_15 = nn.Linear(hidden_dim + cross_dim, 1)
+
+    def __call__(
+        self, seq: mx.array, ctx: mx.array,
+    ) -> tuple[mx.array, mx.array]:
+        out = self.gru(seq)
+        last = out[:, -1, :]
+        last = self.dropout(last)
+        ctx_emb = self.cross_net(self.ctx_proj(ctx))
+        combined = mx.concatenate([last, ctx_emb], axis=-1)
+        return self.head_05(combined), self.head_15(combined)
+
+
+def train_dcn_multi_task_model(
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
+    y_05: np.ndarray,
+    y_15: np.ndarray,
+    hidden_dim: int = 64,
+    n_layers: int = 2,
+    dropout: float = 0.3,
+    cross_dim: int = 32,
+    num_cross_layers: int = 2,
+    learning_rate: float = 1e-3,
+    epochs: int = 50,
+    batch_size: int = 256,
+    early_stop_patience: int = 8,
+    l2_reg: float = 1e-5,
+    seed: int = 42,
+    verbose: bool = True,
+) -> tuple[DCNMultiTaskPredictor, dict[str, Any]]:
+    """Train a ``DCNMultiTaskPredictor`` with two losses."""
+    mx.random.seed(seed)
+    n_samples = X_seq.shape[0]
+    n_stats = X_seq.shape[2]
+    n_context = X_ctx.shape[1]
+    steps_per_epoch = max(1, n_samples // batch_size)
+    total_steps = epochs * steps_per_epoch
+
+    model = DCNMultiTaskPredictor(
+        n_stats=n_stats,
+        n_context=n_context,
+        hidden_dim=hidden_dim,
+        n_layers=n_layers,
+        dropout=dropout,
+        cross_dim=cross_dim,
+        num_cross_layers=num_cross_layers,
+    )
+
+    lr_schedule = optim.cosine_decay(
+        learning_rate, total_steps, end=learning_rate * 0.01,
+    )
+    optimizer = optim.Adam(learning_rate=lr_schedule)
+
+    n_pos_05 = int(y_05.sum())
+    n_neg_05 = int(len(y_05) - n_pos_05)
+    pw_05 = n_neg_05 / n_pos_05 if n_pos_05 > 0 else 1.0
+
+    n_pos_15 = int(y_15.sum())
+    n_neg_15 = int(len(y_15) - n_pos_15)
+    pw_15 = n_neg_15 / n_pos_15 if n_pos_15 > 0 else 1.0
+
+    def loss_fn(
+        xs: mx.array, xc: mx.array, y05: mx.array, y15: mx.array,
+    ) -> mx.array:
+        logits_05, logits_15 = model(xs, xc)
+        loss_05 = nn.losses.binary_cross_entropy(logits_05, y05)
+        loss_05 = loss_05 * mx.where(y05 > 0.5, pw_05, 1.0)
+        loss_15 = nn.losses.binary_cross_entropy(logits_15, y15)
+        loss_15 = loss_15 * mx.where(y15 > 0.5, pw_15, 1.0)
+        base_loss = loss_05.mean() + loss_15.mean()
+        l2 = sum((p * p).sum() for _, p in tree_flatten(model.parameters()))
+        return base_loss + l2_reg * l2
+
+    loss_and_grad_fn = nn.value_and_grad(model, loss_fn)
+
+    best_loss = float("inf")
+    patience = 0
+    rng = np.random.default_rng(seed)
+
+    for epoch in range(epochs):
+        model.train()
+        perm = rng.permutation(n_samples)
+        Xs_shuf = X_seq[perm]
+        Xc_shuf = X_ctx[perm]
+        y05_shuf = y_05[perm]
+        y15_shuf = y_15[perm]
+
+        epoch_loss = 0.0
+        n_batches = 0
+
+        for start in range(0, n_samples, batch_size):
+            end = min(start + batch_size, n_samples)
+            xs_batch = mx.array(Xs_shuf[start:end])
+            xc_batch = mx.array(Xc_shuf[start:end])
+            y05_batch = mx.array(y05_shuf[start:end, np.newaxis])
+            y15_batch = mx.array(y15_shuf[start:end, np.newaxis])
+
+            loss, grads = loss_and_grad_fn(xs_batch, xc_batch, y05_batch, y15_batch)
+            grads = tree_unflatten([
+                (k, mx.clip(v, -5.0, 5.0))
+                for k, v in tree_flatten(grads)
+            ])
+            optimizer.update(model, grads)
+            mx.eval(model.parameters(), optimizer.state)
+
+            epoch_loss += loss.item()
+            n_batches += 1
+
+        avg_loss = epoch_loss / n_batches
+
+        if avg_loss < best_loss - 1e-6:
+            best_loss = avg_loss
+            patience = 0
+        else:
+            patience += 1
+            if patience >= early_stop_patience:
+                if verbose:
+                    print(f"    Early stop at epoch {epoch + 1}")
+                break
+
+        if verbose and (epoch + 1) % 10 == 0:
+            print(f"    Epoch {epoch + 1}/{epochs}  loss={avg_loss:.4f}")
+
+    metadata = {
+        "arch": "DCNMultiTaskPredictor",
+        "n_stats": n_stats,
+        "n_context": n_context,
+        "hidden_dim": hidden_dim,
+        "n_layers": n_layers,
+        "dropout": dropout,
+        "cross_dim": cross_dim,
+        "num_cross_layers": num_cross_layers,
+        "learning_rate": learning_rate,
+        "epochs_trained": epoch + 1,
+        "batch_size": batch_size,
+        "l2_reg": l2_reg,
+        "n_train": n_samples,
+    }
+    return model, metadata
+
+
+def predict_dcn_multi_task_model(
+    model: DCNMultiTaskPredictor,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return (proba_05, proba_15)."""
+    model.eval()
+    n = X_seq.shape[0]
+    batch_size = 1024
+    p05_list: list[np.ndarray] = []
+    p15_list: list[np.ndarray] = []
+
+    for start in range(0, n, batch_size):
+        end = min(start + batch_size, n)
+        xs = mx.array(X_seq[start:end])
+        xc = mx.array(X_ctx[start:end])
+        logits_05, logits_15 = model(xs, xc)
+        p05_list.append(np.asarray(mx.sigmoid(logits_05)).reshape(-1))
+        p15_list.append(np.asarray(mx.sigmoid(logits_15)).reshape(-1))
+
+    return np.concatenate(p05_list), np.concatenate(p15_list)
+
+
+def save_dcn_model(
+    model: DCNMultiTaskPredictor,
+    directory: str,
+    stats_mean: np.ndarray | None,
+    stats_std: np.ndarray | None,
+    feat_mean: np.ndarray | None,
+    feat_std: np.ndarray | None,
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    """Save a trained DCN multi-task model to disk."""
+    os.makedirs(directory, exist_ok=True)
+    weights = _flatten_params(model.parameters())
+    mx.save_safetensors(os.path.join(directory, "model.safetensors"), weights)
+    for name, arr in [("stats_mean", stats_mean), ("stats_std", stats_std),
+                       ("feat_mean", feat_mean), ("feat_std", feat_std)]:
+        if arr is not None:
+            np.save(os.path.join(directory, f"{name}.npy"), arr)
+    config = {
+        "arch": "DCNMultiTaskPredictor",
+        "n_stats": N_STATS,
+        "hidden_dim": model.gru.hidden_size,
+        "dropout": 0.3,
+    }
+    if metadata:
+        config.update(metadata)
+    with open(os.path.join(directory, "config.json"), "w") as f:
+        json.dump(config, f, indent=2)
+    return directory
+
+
+def load_dcn_model(
+    directory: str,
+) -> tuple[DCNMultiTaskPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    """Load a DCN multi-task model saved by ``save_dcn_model``."""
+    with open(os.path.join(directory, "config.json")) as f:
+        config = json.load(f)
+
+    model = DCNMultiTaskPredictor(
+        n_stats=config.get("n_stats", N_STATS),
+        n_context=config.get("n_context", 64),
+        hidden_dim=config.get("hidden_dim", 64),
+        n_layers=config.get("n_layers", 2),
+        dropout=config.get("dropout", 0.3),
+        cross_dim=config.get("cross_dim", 32),
+        num_cross_layers=config.get("num_cross_layers", 2),
+    )
+    model.load_weights(os.path.join(directory, "model.safetensors"), strict=False)
+
+    def _load_arr(name: str) -> np.ndarray:
+        path = os.path.join(directory, name)
+        return np.load(path) if os.path.isfile(path) else np.array([])
+
+    stats_mean = _load_arr("stats_mean.npy")
+    stats_std = _load_arr("stats_std.npy")
+    feat_mean = _load_arr("feat_mean.npy")
+    feat_std = _load_arr("feat_std.npy")
+    return model, stats_mean, stats_std, feat_mean, feat_std, config
+
+
+# ---------------------------------------------------------------------------
+# Transformer encoder model (replaces GRU)
+# ---------------------------------------------------------------------------
+
+
+class PositionalEncoding(nn.Module):
+    """Learned positional encoding for a fixed-length sequence."""
+
+    def __init__(self, max_len: int, d_model: int):
+        super().__init__()
+        self.embedding = mx.random.normal((max_len, d_model)) * 0.02
+
+    def __call__(self, x: mx.array) -> mx.array:
+        return x + self.embedding[: x.shape[1]]
+
+
+class TransformerEncoder(nn.Module):
+    """Lightweight transformer encoder over game stat sequences.
+
+    Args:
+        n_stats: Number of stat features per game.
+        d_model: Transformer hidden dimension.
+        nhead: Number of attention heads.
+        num_layers: Number of encoder layers.
+        dropout: Dropout probability.
+    """
+
+    def __init__(
+        self,
+        n_stats: int = N_STATS,
+        d_model: int = 32,
+        nhead: int = 4,
+        num_layers: int = 2,
+        dropout: float = 0.3,
+    ):
+        super().__init__()
+        self._num_layers = num_layers
+        self.input_proj = nn.Linear(n_stats, d_model)
+        self.pos_enc = PositionalEncoding(SEQUENCE_LEN, d_model)
+        self.dropout = nn.Dropout(dropout)
+
+        for i in range(num_layers):
+            setattr(self, f"attn_{i}", nn.MultiHeadAttention(d_model, nhead))
+            setattr(self, f"norm1_{i}", nn.LayerNorm(d_model))
+            setattr(self, f"ffn_{i}", nn.Sequential(
+                nn.Linear(d_model, d_model * 2),
+                nn.ReLU(),
+                nn.Linear(d_model * 2, d_model),
+            ))
+            setattr(self, f"norm2_{i}", nn.LayerNorm(d_model))
+
+    def __call__(self, x: mx.array) -> mx.array:
+        x = self.input_proj(x)
+        x = self.pos_enc(x)
+        x = self.dropout(x)
+
+        for i in range(self._num_layers):
+            attn = getattr(self, f"attn_{i}")
+            norm1 = getattr(self, f"norm1_{i}")
+            ffn = getattr(self, f"ffn_{i}")
+            norm2 = getattr(self, f"norm2_{i}")
+
+            residual = x
+            x = attn(x, x, x)
+            x = norm1(residual + x)
+
+            residual = x
+            x = ffn(x)
+            x = norm2(residual + x)
+
+        return x.mean(axis=1)
+
+
+class TransformerMultiTaskPredictor(nn.Module):
+    """Transformer encoder over sequences + MLP over context → two heads.
+
+    Architecture::
+
+        [B,T,F] → Transformer → [B,D]  ─┐
+                                         ├→ Concat → head_05 → [B,1]
+        [B,C] → Linear+ReLU ────────────┘
+                                                   head_15 → [B,1]
+    """
+
+    def __init__(
+        self,
+        n_stats: int = N_STATS,
+        n_context: int = 64,
+        d_model: int = 32,
+        nhead: int = 4,
+        num_layers: int = 2,
+        dropout: float = 0.3,
+    ):
+        super().__init__()
+        self.transformer = TransformerEncoder(
+            n_stats=n_stats, d_model=d_model,
+            nhead=nhead, num_layers=num_layers, dropout=dropout,
+        )
+        self.context_net = nn.Sequential(
+            nn.Linear(n_context, d_model),
+            nn.ReLU(),
+        )
+        self.dropout = nn.Dropout(dropout)
+        self.head_05 = nn.Linear(d_model * 2, 1)
+        self.head_15 = nn.Linear(d_model * 2, 1)
+
+    def __call__(
+        self, seq: mx.array, ctx: mx.array,
+    ) -> tuple[mx.array, mx.array]:
+        seq_emb = self.transformer(seq)
+        ctx_emb = self.context_net(ctx)
+        combined = mx.concatenate([seq_emb, ctx_emb], axis=-1)
+        combined = self.dropout(combined)
+        return self.head_05(combined), self.head_15(combined)
+
+
+def train_transformer_multi_task_model(
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
+    y_05: np.ndarray,
+    y_15: np.ndarray,
+    d_model: int = 32,
+    nhead: int = 4,
+    num_layers: int = 2,
+    dropout: float = 0.3,
+    learning_rate: float = 1e-3,
+    epochs: int = 50,
+    batch_size: int = 256,
+    early_stop_patience: int = 8,
+    l2_reg: float = 1e-5,
+    seed: int = 42,
+    verbose: bool = True,
+) -> tuple[TransformerMultiTaskPredictor, dict[str, Any]]:
+    """Train a ``TransformerMultiTaskPredictor`` with two losses."""
+    mx.random.seed(seed)
+    n_samples = X_seq.shape[0]
+    n_stats = X_seq.shape[2]
+    n_context = X_ctx.shape[1]
+    steps_per_epoch = max(1, n_samples // batch_size)
+    total_steps = epochs * steps_per_epoch
+
+    model = TransformerMultiTaskPredictor(
+        n_stats=n_stats,
+        n_context=n_context,
+        d_model=d_model,
+        nhead=nhead,
+        num_layers=num_layers,
+        dropout=dropout,
+    )
+
+    lr_schedule = optim.cosine_decay(
+        learning_rate, total_steps, end=learning_rate * 0.01,
+    )
+    optimizer = optim.Adam(learning_rate=lr_schedule)
+
+    n_pos_05 = int(y_05.sum())
+    n_neg_05 = int(len(y_05) - n_pos_05)
+    pw_05 = n_neg_05 / n_pos_05 if n_pos_05 > 0 else 1.0
+    n_pos_15 = int(y_15.sum())
+    n_neg_15 = int(len(y_15) - n_pos_15)
+    pw_15 = n_neg_15 / n_pos_15 if n_pos_15 > 0 else 1.0
+
+    def loss_fn(
+        xs: mx.array, xc: mx.array, y05: mx.array, y15: mx.array,
+    ) -> mx.array:
+        logits_05, logits_15 = model(xs, xc)
+        loss_05 = nn.losses.binary_cross_entropy(logits_05, y05)
+        loss_05 = loss_05 * mx.where(y05 > 0.5, pw_05, 1.0)
+        loss_15 = nn.losses.binary_cross_entropy(logits_15, y15)
+        loss_15 = loss_15 * mx.where(y15 > 0.5, pw_15, 1.0)
+        base_loss = loss_05.mean() + loss_15.mean()
+        l2 = sum((p * p).sum() for _, p in tree_flatten(model.parameters()))
+        return base_loss + l2_reg * l2
+
+    loss_and_grad_fn = nn.value_and_grad(model, loss_fn)
+
+    best_loss = float("inf")
+    patience = 0
+    rng = np.random.default_rng(seed)
+
+    for epoch in range(epochs):
+        model.train()
+        perm = rng.permutation(n_samples)
+        Xs_shuf = X_seq[perm]
+        Xc_shuf = X_ctx[perm]
+        y05_shuf = y_05[perm]
+        y15_shuf = y_15[perm]
+
+        epoch_loss = 0.0
+        n_batches = 0
+
+        for start in range(0, n_samples, batch_size):
+            end = min(start + batch_size, n_samples)
+            xs_batch = mx.array(Xs_shuf[start:end])
+            xc_batch = mx.array(Xc_shuf[start:end])
+            y05_batch = mx.array(y05_shuf[start:end, np.newaxis])
+            y15_batch = mx.array(y15_shuf[start:end, np.newaxis])
+
+            loss, grads = loss_and_grad_fn(xs_batch, xc_batch, y05_batch, y15_batch)
+            grads = tree_unflatten([
+                (k, mx.clip(v, -5.0, 5.0))
+                for k, v in tree_flatten(grads)
+            ])
+            optimizer.update(model, grads)
+            mx.eval(model.parameters(), optimizer.state)
+
+            epoch_loss += loss.item()
+            n_batches += 1
+
+        avg_loss = epoch_loss / n_batches
+
+        if avg_loss < best_loss - 1e-6:
+            best_loss = avg_loss
+            patience = 0
+        else:
+            patience += 1
+            if patience >= early_stop_patience:
+                if verbose:
+                    print(f"    Early stop at epoch {epoch + 1}")
+                break
+
+        if verbose and (epoch + 1) % 10 == 0:
+            print(f"    Epoch {epoch + 1}/{epochs}  loss={avg_loss:.4f}")
+
+    metadata = {
+        "arch": "TransformerMultiTaskPredictor",
+        "n_stats": n_stats,
+        "n_context": n_context,
+        "d_model": d_model,
+        "nhead": nhead,
+        "num_layers": num_layers,
+        "dropout": dropout,
+        "learning_rate": learning_rate,
+        "epochs_trained": epoch + 1,
+        "batch_size": batch_size,
+        "l2_reg": l2_reg,
+        "n_train": n_samples,
+    }
+    return model, metadata
+
+
+def predict_transformer_multi_task_model(
+    model: TransformerMultiTaskPredictor,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return (proba_05, proba_15)."""
+    model.eval()
+    n = X_seq.shape[0]
+    batch_size = 1024
+    p05_list: list[np.ndarray] = []
+    p15_list: list[np.ndarray] = []
+
+    for start in range(0, n, batch_size):
+        end = min(start + batch_size, n)
+        xs = mx.array(X_seq[start:end])
+        xc = mx.array(X_ctx[start:end])
+        logits_05, logits_15 = model(xs, xc)
+        p05_list.append(np.asarray(mx.sigmoid(logits_05)).reshape(-1))
+        p15_list.append(np.asarray(mx.sigmoid(logits_15)).reshape(-1))
+
+    return np.concatenate(p05_list), np.concatenate(p15_list)
+
+
+def save_transformer_model(
+    model: TransformerMultiTaskPredictor,
+    directory: str,
+    stats_mean: np.ndarray | None,
+    stats_std: np.ndarray | None,
+    feat_mean: np.ndarray | None,
+    feat_std: np.ndarray | None,
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    """Save a trained transformer multi-task model to disk."""
+    os.makedirs(directory, exist_ok=True)
+    weights = _flatten_params(model.parameters())
+    mx.save_safetensors(os.path.join(directory, "model.safetensors"), weights)
+    for name, arr in [("stats_mean", stats_mean), ("stats_std", stats_std),
+                       ("feat_mean", feat_mean), ("feat_std", feat_std)]:
+        if arr is not None:
+            np.save(os.path.join(directory, f"{name}.npy"), arr)
+    config = {
+        "arch": "TransformerMultiTaskPredictor",
+        "n_stats": N_STATS,
+        "d_model": model.transformer.input_proj.weight.shape[0],
+        "dropout": 0.3,
+    }
+    if metadata:
+        config.update(metadata)
+    with open(os.path.join(directory, "config.json"), "w") as f:
+        json.dump(config, f, indent=2)
+    return directory
+
+
+def load_transformer_model(
+    directory: str,
+) -> tuple[TransformerMultiTaskPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    """Load a transformer multi-task model saved by ``save_transformer_model``."""
+    with open(os.path.join(directory, "config.json")) as f:
+        config = json.load(f)
+
+    model = TransformerMultiTaskPredictor(
+        n_stats=config.get("n_stats", N_STATS),
+        n_context=config.get("n_context", 64),
+        d_model=config.get("d_model", 32),
+        nhead=config.get("nhead", 4),
+        num_layers=config.get("num_layers", 2),
+        dropout=config.get("dropout", 0.3),
+    )
+    model.load_weights(os.path.join(directory, "model.safetensors"), strict=False)
+
+    def _load_arr(name: str) -> np.ndarray:
+        path = os.path.join(directory, name)
+        return np.load(path) if os.path.isfile(path) else np.array([])
+
+    stats_mean = _load_arr("stats_mean.npy")
+    stats_std = _load_arr("stats_std.npy")
+    feat_mean = _load_arr("feat_mean.npy")
+    feat_std = _load_arr("feat_std.npy")
+    return model, stats_mean, stats_std, feat_mean, feat_std, config
