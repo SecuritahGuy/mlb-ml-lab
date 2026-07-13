@@ -34,6 +34,7 @@ from mlb_ml_lab import (
 SEASONS = list(range(2021, 2027))  # 2021–2026
 POSITIONS_TO_EXCLUDE = {"P"}
 MAX_PLAYERS_PER_TEAM = 20  # safety cap
+MIN_PA = 50  # per-season minimum plate appearances to include a player
 
 
 # ---------------------------------------------------------------------------
@@ -258,25 +259,25 @@ def fetch_statcast_data(
     seasons: list[int],
 ) -> tuple[list[dict[str, str]] | None, list[dict[str, str]] | None]:
     """Fetch Savant leaderboard data (xBA, barrel%, etc.) for recent years."""
-    print("Fetching Statcast leaderboard data…")
+    print("Fetching Statcast leaderboard data (all seasons, all batters)…")
     statcast_batters: list[dict[str, str]] = []
     expected_stats: list[dict[str, str]] = []
-    for s in [2024]:  # Statcast leaderboard available for recent seasons
+    for s in seasons:
         try:
-            sb = client.get_statcast_batters(season=s)
+            sb = client.get_statcast_batters(season=s, min_qual="y")
             if sb:
                 statcast_batters.extend(sb)
         except Exception:  # pylint: disable=broad-exception-caught
             pass
         try:
-            es = client.get_expected_stats(season=s)
+            es = client.get_expected_stats(season=s, min_qual="y")
             if es:
                 expected_stats.extend(es)
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
-    print(f"  Statcast batters: {len(statcast_batters)}, "
-          f"Expected stats: {len(expected_stats)}")
+    print(f"  Statcast batters: {len(statcast_batters)} rows across {len(seasons)} seasons, "
+          f"Expected stats: {len(expected_stats)} rows")
     return statcast_batters or None, expected_stats or None
 
 
@@ -577,6 +578,16 @@ def main() -> None:
         if not season_logs:
             print(f"  {s}: no game logs, skipping")
             continue
+
+        # Per-season PA filter
+        pa_by_pid: dict[int, int] = {}
+        for log in season_logs:
+            pa_by_pid[log.player_id] = pa_by_pid.get(log.player_id, 0) + log.plate_appearances
+        kept_ids = {pid for pid, pa in pa_by_pid.items() if pa >= MIN_PA}
+        season_logs = [log for log in season_logs if log.player_id in kept_ids]
+        n_filtered = sum(1 for pid, pa in pa_by_pid.items() if pa < MIN_PA)
+        print(f"  {s}: {len(season_logs)} logs after PA≥{MIN_PA} filter "
+              f"({n_filtered} players removed, {sum(pa_by_pid.values()) - sum(pa for pid, pa in pa_by_pid.items() if pa >= MIN_PA)} PA removed)")
 
         # Build opponent pitching map for this season
         opp_pitching = team_stats["pitching"].get(s, {})
