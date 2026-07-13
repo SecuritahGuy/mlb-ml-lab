@@ -728,13 +728,22 @@ class MultiTaskHybridPredictor(nn.Module):
         hidden_dim: int = 64,
         n_layers: int = 2,
         dropout: float = 0.3,
+        context_depth: int = 1,
     ):
         super().__init__()
         self.gru = nn.GRU(n_stats, hidden_dim, n_layers)
-        self.context_net = nn.Sequential(
-            nn.Linear(n_context, hidden_dim),
-            nn.ReLU(),
-        )
+        if context_depth >= 2:
+            self.context_net = nn.Sequential(
+                nn.Linear(n_context, hidden_dim * 2),
+                nn.ReLU(),
+                nn.Linear(hidden_dim * 2, hidden_dim),
+                nn.ReLU(),
+            )
+        else:
+            self.context_net = nn.Sequential(
+                nn.Linear(n_context, hidden_dim),
+                nn.ReLU(),
+            )
         self.dropout = nn.Dropout(dropout)
         self.head_05 = nn.Linear(hidden_dim * 2, 1)
         self.head_15 = nn.Linear(hidden_dim * 2, 1)
@@ -856,6 +865,7 @@ def train_multi_task_model(
     hidden_dim: int = 64,
     n_layers: int = 2,
     dropout: float = 0.3,
+    context_depth: int = 1,
     learning_rate: float = 1e-3,
     epochs: int = 50,
     batch_size: int = 256,
@@ -878,6 +888,7 @@ def train_multi_task_model(
         hidden_dim=hidden_dim,
         n_layers=n_layers,
         dropout=dropout,
+        context_depth=context_depth,
     )
 
     lr_schedule = optim.cosine_decay(
@@ -963,6 +974,7 @@ def train_multi_task_model(
         "hidden_dim": hidden_dim,
         "n_layers": n_layers,
         "dropout": dropout,
+        "context_depth": context_depth,
         "learning_rate": learning_rate,
         "epochs_trained": epoch + 1,
         "batch_size": batch_size,
@@ -1038,6 +1050,7 @@ def load_multi_task_model(
         hidden_dim=config.get("hidden_dim", 64),
         n_layers=config.get("n_layers", 2),
         dropout=config.get("dropout", 0.3),
+        context_depth=config.get("context_depth", 1),
     )
     model.load_weights(os.path.join(directory, "model.safetensors"), strict=False)
 
