@@ -32,7 +32,7 @@ from mlb_ml_lab import (
     save_feature_data,
 )
 
-SEASONS = list(range(2021, 2027))  # 2021–2026
+SEASONS = [2016, 2017, 2018, 2019, 2021, 2022, 2023, 2024, 2025, 2026]  # skip 2020 (COVID)
 POSITIONS_TO_EXCLUDE = {"P"}
 MAX_PLAYERS_PER_TEAM = 20  # safety cap
 MIN_PA = 50  # per-season minimum plate appearances to include a player

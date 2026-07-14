@@ -32,8 +32,8 @@ from mlb_ml_lab.models.train import _build_model, _feature_columns
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
-CACHED_DATASET = "data/datasets/full_2021_2026_30teams"
-TRAIN_SEASONS = [2021, 2022, 2023, 2024, 2025]
+CACHED_DATASET = "data/datasets/full_2016_2026_30teams"
+TRAIN_SEASONS = [2016, 2017, 2018, 2019, 2021, 2022, 2023, 2024, 2025]
 SEED = 42
 ENSEMBLE_DIR = "data/models/ensemble"
 
@@ -298,7 +298,7 @@ def main() -> None:
     final_hybrid, hybrid_meta = train_hybrid_model(
         Xs, Xc, y,
         hidden_dim=64, n_layers=2, dropout=0.2,
-        learning_rate=1e-3, epochs=90, batch_size=512, verbose=True,
+        learning_rate=1e-3, epochs=90, verbose=True,
     )
 
     # Save both models + ensemble config
