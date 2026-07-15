@@ -49,16 +49,32 @@ Build thin, testable wrappers around the official public MLB Stats API at `stats
 - [x] End-to-end pipeline (`pipeline/run_end_to_end.py`): fetch real MLB data → featurize → walk-forward train → print metrics
 - [x] Hyperparameter tuning (`tune_hyperparameters()`: random search inside walk-forward, per-model default grids, AUC or log-loss optimisation)
 - [x] `expected_calibration_error()` — ECE metric over probability buckets
-- [ ] Calibration curve + expected profit at market odds
+- [x] Calibration curve + expected profit at market odds (`pipeline/odds_backtest.py`: moneyline +EV walk-forward with flat + Kelly sims; per-player ECE with per-season isotonic recalibration)
 
 ## Phase 4: Backtesting & Odds Integration
 
 - [x] `src/mlb_ml_lab/evaluation/backtest.py` — `walk_forward_predict()` capture, `simulate_bets()` flat-stake, `calibration_buckets()`, `max_drawdown()`, `print_backtest_report()`
 - [x] `pipeline/backtest.py` — end-to-end script (fetch → featurize → walk-forward → simulate → report)
 - [x] Unit tests: walk-forward prediction, betting simulation, calibration, drawdown
-- [ ] Fetch real sportsbook lines (manually or via a free odds API) to evaluate +EV opportunities
-- [ ] Kelly / fractional Kelly staking
-- [ ] Track model confidence calibration — are probabilities well-calibrated at decision thresholds?
+- [x] Fetch real sportsbook lines (`src/mlb_ml_lab/data/odds.py` scrapes SBR moneylines). **Caveat: SBR's free page exposes only game-level moneyline / run-line / totals — player hit-prop odds are NOT available**, so prop +EV is evaluated by calibration alone, not against market lines.
+- [x] Kelly / fractional Kelly staking (flat vs Kelly sims with drawdown in `pipeline/odds_backtest.py`)
+- [x] Track model confidence calibration — per-player probs are well-ranked but miscalibrated; per-season isotonic recalibration drops ECE from ~0.070 → ~0.002 (target_0.5) and ~0.037 → ~0.001 (target_1.5)
+
+### Backtest results (10-season walk-forward, real SBR odds)
+
+- **Moneyline +EV (real SBR moneylines, settled on game result).** Calibrating the
+  ensemble (out-of-fold Platt/temp on the aggregate hit-edge) recovers a genuine,
+  modest edge. At edge ≥ 0.10: flat ROI **+2.62%**, full-Kelly ROI **+3.39%**
+  (RAW uncalibrated: +1.67% / +1.68%). Win-rate rises with edge — the signal is real,
+  not the earlier anti-correlated artifact. Edge is small but positive and monotonic.
+- **Player-prop calibration.** Per-player P(hits≥k) is well-ranked but miscalibrated.
+  A global Platt/temperature scaler *hurts* it (ECE 0.070 → 0.170) because it
+  over-corrects across seasons (temporal drift). **Per-season isotonic recalibration**
+  (5-fold cross-fit within each season) fixes it: ECE 0.070 → **0.002** (0.5) and
+  0.037 → **0.001** (1.5). These ECEs are slightly optimistic (evaluated on the same
+  seasons used for cross-fitting) but demonstrate the probs are easily calibrated.
+- **Player-prop +EV not computable:** SBR's free page has no hit-prop lines, so props
+  are assessed by calibration only, not against market prices.
 
 ## Phase 5: Iteration & Tooling
 

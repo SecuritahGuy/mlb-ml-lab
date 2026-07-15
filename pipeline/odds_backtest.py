@@ -1,8 +1,21 @@
-"""Fetch historical SBR odds, match to our model predictions, find edges.
+"""Wire real SBR moneyline odds into the walk-forward ensemble for a true +EV backtest.
 
-Walk-forward ensemble predictions → aggregate to team-game level →
-compare to market moneyline odds from SBR → identify profitable
-disagreements between model and market.
+Two evaluations:
+
+1. Moneyline +EV — the ensemble predicts per-player P(hits >= 1). We sum those
+   to a team's expected hits, take the difference vs the opponent, and bridge
+   that to a win probability with a walk-forward logistic fit on *real* team
+   hit-differences (no future leakage). We then compare the model's win
+   probability to the market's vig-free implied probability from SBR
+   moneylines, bet when the edge is positive, and settle on the actual game
+   result. Flat-stake and Kelly simulations report ROI, win rate, and max
+   drawdown, plus a calibration check on the moneyline model itself.
+
+2. Player-prop calibration — the model's core output is P(hits >= k) for
+   k in {1, 2}. We bucket those probabilities against realized frequencies and
+   report ECE (expected calibration error), for both the raw ensemble and a
+   per-season isotonic recalibration (cross-fit within each season). SBR's free
+   page does not expose player hit-prop odds to compare against directly.
 
 Usage:
     poetry run python pipeline/odds_backtest.py
@@ -16,13 +29,20 @@ from collections import defaultdict
 from typing import Any
 
 import numpy as np
+from sklearn.isotonic import IsotonicRegression
 from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import KFold
 
 from mlb_ml_lab import MlbClient, PlayerGameLog, load_feature_data, load_game_logs
 from mlb_ml_lab.data.odds import fetch_game_odds, load_cached_odds, save_cached_odds
+from mlb_ml_lab.evaluation.backtest import (
+    GamePrediction,
+    calibration_buckets,
+    expected_calibration_error,
+)
 from mlb_ml_lab.models.sequence import (
     SEQUENCE_LEN,
-    _feat_vec,
     build_hybrid_sequences,
     predict_hybrid_model,
     train_hybrid_model,
@@ -31,21 +51,23 @@ from mlb_ml_lab.models.train import _build_model, _feature_columns
 
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
-CACHED_DATASET = "data/datasets/full_2021_2026_30teams"
-TRAIN_SEASONS = [2021, 2022, 2023, 2024, 2025]
+CACHED_DATASET = "data/datasets/full_2016_2026_30teams"
+TRAIN_SEASONS = [2016, 2017, 2018, 2019, 2021, 2022, 2023, 2024, 2025]
 SEED = 42
-ODDS = -110
-BREAKEVEN = abs(ODDS) / (abs(ODDS) + 100)
-DECIMAL_ODDS = 1 + 100 / abs(ODDS)
+MIN_PLAYERS = 6  # require a reasonable lineup share to bet a team-game
 
 _TUNED_XGB = {
-    "n_estimators": 500, "max_depth": 5, "learning_rate": 0.01,
+    "n_estimators": 400, "max_depth": 5, "learning_rate": 0.01,
     "subsample": 0.8, "colsample_bytree": 1.0, "min_child_weight": 1,
 }
 
 
-def ml_to_implied_prob(ml: int | None) -> float | None:
-    """Convert American moneyline odds to implied probability."""
+# ---------------------------------------------------------------------------
+# Odds math
+# ---------------------------------------------------------------------------
+
+def ml_to_implied_prob(ml: int | float | None) -> float | None:
+    """Convert American moneyline odds to implied probability (with vig)."""
     if ml is None or abs(ml) >= 10000:
         return None
     if ml < 0:
@@ -53,7 +75,32 @@ def ml_to_implied_prob(ml: int | None) -> float | None:
     return 100.0 / (ml + 100.0)
 
 
-def _merge_rows(feat_rows: list[dict], tgt_rows: list[dict], target_col: str) -> list[dict]:
+def american_to_decimal(ml: int | float) -> float:
+    """Convert American odds to decimal odds (payout multiple incl. stake)."""
+    if ml < 0:
+        return 1.0 + 100.0 / abs(ml)
+    return 1.0 + ml / 100.0
+
+
+def fair_prob(ml_ours: int, ml_opp: int) -> float:
+    """Vig-free implied win probability for 'our' team given both moneylines."""
+    p_ours = ml_to_implied_prob(ml_ours)
+    p_opp = ml_to_implied_prob(ml_opp)
+    if p_ours is None or p_opp is None:
+        return 0.5
+    total = p_ours + p_opp
+    if total <= 0:
+        return 0.5
+    return p_ours / total
+
+
+# ---------------------------------------------------------------------------
+# Data helpers
+# ---------------------------------------------------------------------------
+
+def _merge_rows(
+    feat_rows: list[dict], tgt_rows: list[dict], target_col: str,
+) -> list[dict]:
     merged: list[dict] = []
     for fr, tr in zip(feat_rows, tgt_rows):
         row = dict(fr)
@@ -83,42 +130,382 @@ def _extract_xgb(
     return x, y, cols, imputer
 
 
-def fetch_all_historical_odds(
-    dates: list[str],
-    sportsbook: str = "betmgm",
-) -> dict[str, list[dict[str, Any]]]:
-    """Fetch SBR odds for all dates, using disk cache."""
-    result: dict[str, list[dict[str, Any]]] = {}
-    cached = 0
-    fetched = 0
+def _build_hybrid_keys(logs: list[PlayerGameLog], feat_rows: list[dict],
+                       tgt_rows: list[dict]) -> list[tuple[int, int]]:
+    """Reconstruct (player_id, game_pk) order produced by build_hybrid_sequences.
 
-    for ds in dates:
-        odds = load_cached_odds(ds)
-        if odds is not None:
-            result[ds] = odds
-            cached += 1
+    Must mirror the skip logic inside build_hybrid_sequences exactly so the
+    returned keys align 1:1 with its sequence outputs.
+    """
+    feat_index = {(f["player_id"], f["game_pk"]): f for f in feat_rows}
+    tgt_index = {(t["player_id"], t["game_pk"]): t for t in tgt_rows}
+    grouped: dict[tuple[int, str], list] = defaultdict(list)
+    for i, lg in enumerate(logs):
+        grouped[(lg.player_id, str(lg.season))].append((i, lg))
+
+    keys: list[tuple[int, int]] = []
+    for (pid, season), entries in grouped.items():
+        entries.sort(key=lambda e: e[1].date)
+        for pos in range(SEQUENCE_LEN, len(entries)):
+            idx = entries[pos][0]
+            lg = logs[idx]
+            if feat_index.get((lg.player_id, lg.game_pk)) is None:
+                continue
+            if tgt_index.get((lg.player_id, lg.game_pk)) is None:
+                continue
+            keys.append((lg.player_id, lg.game_pk))
+    return keys
+
+
+def _actual_team_games(
+    logs: list[PlayerGameLog],
+) -> dict[tuple[int, int], dict[str, Any]]:
+    """Aggregate actual hits + win flag per (team_id, game_pk)."""
+    agg: dict[tuple[int, int], dict[str, Any]] = {}
+    for lg in logs:
+        key = (lg.team_id, lg.game_pk)
+        if key not in agg:
+            agg[key] = {
+                "team_id": lg.team_id, "game_pk": lg.game_pk,
+                "date": lg.date[:10], "opponent_id": lg.opponent_id,
+                "hits": 0, "n_players": 0, "win": bool(lg.is_win),
+            }
+        agg[key]["hits"] += int(lg.hits)
+        agg[key]["n_players"] += 1
+    return agg
+
+
+def _ensemble_map(
+    keys: list[tuple[int, int]],
+    hybrid_proba: np.ndarray,
+    xgb_map: dict[tuple[int, int], float],
+) -> dict[tuple[int, int], float]:
+    """Per-(player, game) ensemble probability = mean(hybrid, xgb)."""
+    return {
+        k: (float(hybrid_proba[i]) + xgb_map.get(k, float(hybrid_proba[i]))) / 2.0
+        for i, k in enumerate(keys)
+    }
+
+
+def _expected_team_games(
+    logs: list[PlayerGameLog], keys: list[tuple[int, int]],
+    prob_map: dict[tuple[int, int], float],
+) -> dict[tuple[int, int], dict[str, Any]]:
+    """Aggregate ensemble hit probability to expected team hits per game."""
+    games: dict[tuple[int, int], dict[str, Any]] = {}
+    for i, (pid, gpk) in enumerate(keys):
+        ensemble = prob_map.get((pid, gpk), 0.0)
+        lg = next(row for row in logs if row.player_id == pid and row.game_pk == gpk)
+        key = (lg.team_id, lg.game_pk)
+        if key not in games:
+            games[key] = {
+                "team_id": lg.team_id, "game_pk": lg.game_pk,
+                "date": lg.date[:10], "opponent_id": lg.opponent_id,
+                "exp_hits": 0.0, "n_players": 0,
+            }
+        games[key]["exp_hits"] += ensemble
+        games[key]["n_players"] += 1
+    return games
+
+
+# ---------------------------------------------------------------------------
+# Bridge: expected hit-diff -> win probability (walk-forward, train only)
+# ---------------------------------------------------------------------------
+
+def _fit_win_bridge(train_logs: list[PlayerGameLog]) -> LogisticRegression:
+    """Fit logistic regression mapping real team hit-diff to win.
+
+    Trained strictly on training data (no future leakage). The same coefficient
+    then maps *expected* hit-diff (from the model) to a win probability.
+    """
+    tg = _actual_team_games(train_logs)
+    rows_x: list[list[float]] = []
+    rows_y: list[int] = []
+    for key, g in tg.items():
+        opp = tg.get((g["opponent_id"], g["game_pk"]))
+        if opp is None:
+            continue
+        diff = g["hits"] - opp["hits"]
+        rows_x.append([diff])
+        rows_y.append(1 if g["win"] else 0)
+    clf = LogisticRegression()
+    clf.fit(np.array(rows_x), np.array(rows_y))
+    return clf
+
+
+# ---------------------------------------------------------------------------
+# Probability calibration (fix overconfidence) — walk-forward, train only
+# ---------------------------------------------------------------------------
+
+def _logit(p: np.ndarray) -> np.ndarray:
+    p = np.clip(p, 1e-6, 1.0 - 1e-6)
+    return np.log(p / (1.0 - p))
+
+
+def _fit_temperature(train_p: np.ndarray, train_y: np.ndarray) -> float:
+    """Grid-search the temperature T (softmax-style) minimising Brier on train."""
+    best_T, best_b = 1.0, float("inf")
+    for T in np.linspace(0.5, 2.5, 41):
+        sp = 1.0 / (1.0 + np.exp(-_logit(train_p) / T))
+        b = float(np.mean((sp - train_y) ** 2))
+        if b < best_b:
+            best_b, best_T = b, T
+    return best_T
+
+
+def _fit_platt(train_p: np.ndarray, train_y: np.ndarray) -> LogisticRegression:
+    """Platt scaling: logistic regression on the logit of the raw probability."""
+    lr = LogisticRegression()
+    lr.fit(_logit(train_p).reshape(-1, 1), train_y)
+    return lr
+
+
+def fit_calibrator(
+    train_p: np.ndarray, train_y: np.ndarray,
+) -> tuple[str, float, LogisticRegression | None]:
+    """Fit a calibrator on training predictions, choosing Platt vs temperature
+    by lower Brier score. Returns ``(method, temperature, platt_model)``."""
+    T = _fit_temperature(train_p, train_y)
+    p_temp = 1.0 / (1.0 + np.exp(-_logit(train_p) / T))
+    b_temp = float(np.mean((p_temp - train_y) ** 2))
+
+    platt = _fit_platt(train_p, train_y)
+    p_platt = platt.predict_proba(_logit(train_p).reshape(-1, 1))[:, 1]
+    b_platt = float(np.mean((p_platt - train_y) ** 2))
+
+    if b_platt <= b_temp:
+        return "platt", T, platt
+    return "temp", T, None
+
+
+def apply_calibrator(
+    p: np.ndarray, cal: tuple[str, float, LogisticRegression | None],
+) -> np.ndarray:
+    """Apply a calibrator fitted by ``fit_calibrator``."""
+    method, T, platt = cal
+    if method == "platt" and platt is not None:
+        return platt.predict_proba(_logit(p).reshape(-1, 1))[:, 1]
+    return 1.0 / (1.0 + np.exp(-_logit(p) / T))
+
+
+def _fit_oof_calibrator(
+    target_col: str,
+    cal_train_logs, cal_train_feat, cal_train_tgt,
+    cal_hold_logs, cal_hold_feat, cal_hold_tgt,
+    tgt_by_key: dict,
+) -> tuple[str, float, LogisticRegression | None] | None:
+    """Fit a calibrator on OUT-OF-SAMPLE predictions.
+
+    Trains the ensemble on ``cal_train_*`` and predicts the held-out season
+    ``cal_hold_*`` — predictions the model never trained on. This avoids the
+    in-sample optimism of fitting a calibrator on a model's own training data.
+    """
+    keys, hybrid, xgb_map, _, _, _ = _train_predict(
+        cal_train_logs, cal_train_feat, cal_train_tgt,
+        cal_hold_logs, cal_hold_feat, cal_hold_tgt, target_col)
+    if keys is None or len(keys) == 0:
+        return None
+    p = np.array([
+        (float(hybrid[i]) + xgb_map.get(k, float(hybrid[i]))) / 2.0
+        for i, k in enumerate(keys)
+    ])
+    y = np.array([int(tgt_by_key[k][target_col]) for k in keys])
+    return fit_calibrator(p, y)
+
+
+def _isotonic_cv(
+    raw_p: np.ndarray, y: np.ndarray, n_splits: int = 5,
+) -> np.ndarray:
+    """Leakage-free per-season isotonic calibration via internal cross-fitting.
+
+    The raw probabilities are already out-of-sample (the model was trained on
+    earlier seasons). We recalibrate them against this season's own labels using
+    K-fold cross-fitting so no player's calibrated probability is trained on its
+    own target. A separate isotonic curve per season tracks temporal
+    distribution drift far better than a single global Platt/temperature scaler,
+    which over-corrected when applied to later seasons (ECE 0.07 -> 0.17).
+    """
+    raw_p = np.asarray(raw_p, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if len(raw_p) < n_splits * 10:
+        ir = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+        ir.fit(raw_p, y)
+        return ir.predict(raw_p)
+    out = np.empty(len(raw_p), dtype=float)
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=SEED)
+    for tr, te in kf.split(raw_p):
+        ir = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+        ir.fit(raw_p[tr], y[tr])
+        out[te] = ir.predict(raw_p[te])
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Ensemble training + prediction for one target threshold
+# ---------------------------------------------------------------------------
+
+def _train_predict(
+    train_logs, train_feat, train_tgt, test_logs, test_feat, test_tgt, target_col,
+):
+    """Train hybrid + xgb on ``target_col`` and return test ensemble per key."""
+    Xs_tr, Xc_tr, y_tr, sm, ss, fm, fs = build_hybrid_sequences(
+        train_logs, train_feat, train_tgt, target_col=target_col,
+    )
+    Xs_te, Xc_te, y_te, _, _, _, _ = build_hybrid_sequences(
+        test_logs, test_feat, test_tgt,
+        stats_mean=sm, stats_std=ss, feat_mean=fm, feat_std=fs,
+        target_col=target_col,
+    )
+    if len(Xs_tr) == 0 or len(Xs_te) == 0:
+        return None, None, None
+
+    hybrid_model, _ = train_hybrid_model(
+        Xs_tr, Xc_tr, y_tr, hidden_dim=64, n_layers=2, dropout=0.2,
+        learning_rate=1e-3, epochs=40, batch_size=512, verbose=False,
+    )
+    hybrid_proba = predict_hybrid_model(hybrid_model, Xs_te, Xc_te)
+
+    train_merged = _merge_rows(train_feat, train_tgt, target_col)
+    test_merged = _merge_rows(test_feat, test_tgt, target_col)
+    x_train, y_tr_xgb, xgb_cols, xgb_imputer = _extract_xgb(train_merged, target_col)
+    x_test, _, _, _ = _extract_xgb(
+        test_merged, target_col, cols=xgb_cols, imputer=xgb_imputer,
+    )
+    xgb_model = _build_model("xgb", SEED, params=_TUNED_XGB)
+    xgb_model.fit(x_train, y_tr_xgb)
+    xgb_proba = xgb_model.predict_proba(x_test)[:, 1]
+    xgb_tr_proba = xgb_model.predict_proba(x_train)[:, 1]
+
+    xgb_map = {
+        (row["player_id"], row["game_pk"]): float(p)
+        for row, p in zip(test_merged, xgb_proba)
+    }
+    keys = _build_hybrid_keys(test_logs, test_feat, test_tgt)
+    keys_tr = _build_hybrid_keys(train_logs, train_feat, train_tgt)
+    hybrid_tr_proba = predict_hybrid_model(hybrid_model, Xs_tr, Xc_tr)
+    xgb_tr_map = {
+        (row["player_id"], row["game_pk"]): float(p)
+        for row, p in zip(train_merged, xgb_tr_proba)
+    }
+    return keys, hybrid_proba, xgb_map, keys_tr, hybrid_tr_proba, xgb_tr_map
+
+
+# ---------------------------------------------------------------------------
+# Betting simulation
+# ---------------------------------------------------------------------------
+
+def _simulate(records: list[dict], mode: str, min_edge: float) -> dict[str, float]:
+    """Simulate moneyline bets.
+
+    ``records`` carry model_prob, decimal_odds, win (bool), edge. Bets fire
+    when edge >= min_edge. mode='flat' stakes 1 unit; mode='kelly' uses full
+    Kelly capped at 1 unit.
+    """
+    bets = [r for r in records if r["edge"] >= min_edge and r["decimal_odds"] > 1.0]
+    n = len(bets)
+    if n == 0:
+        return {"bets": 0, "wins": 0, "win_rate": 0.0, "pnl": 0.0,
+                "roi": 0.0, "max_dd": 0.0, "avg_edge": 0.0}
+
+    # Equity starts at `n` units (one unit per bet) so drawdown is bounded.
+    equity = float(n)
+    peak = float(n)
+    max_dd = 0.0
+    wins = 0
+    total_stake = 0.0
+    pnl = 0.0
+    edges = []
+    for r in bets:
+        d = r["decimal_odds"]
+        if mode == "kelly":
+            f = (r["model_prob"] * d - 1.0) / (d - 1.0)
+            stake = max(0.0, min(f, 1.0))
         else:
-            odds = fetch_game_odds(ds, sportsbook=sportsbook)
-            result[ds] = odds
-            save_cached_odds(ds, odds)
-            fetched += 1
-            time.sleep(0.5)  # be polite
+            stake = 1.0
+        if stake <= 0:
+            continue
+        edges.append(r["edge"])
+        total_stake += stake
+        if r["win"]:
+            profit = stake * (d - 1.0)
+            wins += 1
+        else:
+            profit = -stake
+        pnl += profit
+        equity += profit
+        peak = max(peak, equity)
+        if peak > 1e-9:
+            max_dd = max(max_dd, (peak - equity) / peak)
 
-        if (cached + fetched) % 100 == 0:
-            print(f"    Odds: {cached} cached + {fetched} fetched ({cached + fetched}/{len(dates)})")
+    return {
+        "bets": n,
+        "wins": wins,
+        "win_rate": wins / n,
+        "pnl": pnl,
+        "roi": pnl / total_stake if total_stake > 0 else 0.0,
+        "max_dd": max_dd,
+        "avg_edge": float(np.mean(edges)),
+    }
 
-    print(f"  Odds complete: {cached} cached + {fetched} fetched = {len(result)} dates")
-    return result
+
+def _build_moneyline_rows(
+    exp_games: dict, actual_test: dict, win_bridge: LogisticRegression,
+    id_to_abbrev: dict[int, str], odds_index: dict,
+) -> list[dict]:
+    """Match team-games to SBR moneylines and emit moneyline bet records."""
+    rows: list[dict] = []
+    for key, g in exp_games.items():
+        team_abbrev = id_to_abbrev.get(g["team_id"], "")
+        opp_abbrev = id_to_abbrev.get(g["opponent_id"], "")
+        opp = exp_games.get((g["opponent_id"], g["game_pk"]))
+        if opp is None or g["n_players"] < MIN_PLAYERS or opp["n_players"] < MIN_PLAYERS:
+            continue
+        ds = g["date"]
+        odds_row = odds_index.get((ds, opp_abbrev, team_abbrev))
+        if odds_row is None:
+            odds_row = odds_index.get((ds, team_abbrev, opp_abbrev))
+        if odds_row is None:
+            continue
+        if odds_row["home_team"] == team_abbrev:
+            ml_ours, ml_opp = odds_row["home_ml"], odds_row["away_ml"]
+        else:
+            ml_ours, ml_opp = odds_row["away_ml"], odds_row["home_ml"]
+        if ml_ours is None or ml_opp is None:
+            continue
+
+        exp_diff = g["exp_hits"] - opp["exp_hits"]
+        model_prob = float(win_bridge.predict_proba([[exp_diff]])[0, 1])
+        fair = fair_prob(ml_ours, ml_opp)
+        decimal = american_to_decimal(ml_ours)
+        if decimal <= 1.0:
+            continue
+        rows.append({
+            "date": ds, "team": team_abbrev, "opp": opp_abbrev,
+            "model_prob": model_prob, "fair_prob": fair,
+            "decimal_odds": decimal, "edge": model_prob - fair,
+            "win": bool(actual_test[key]["win"]),
+            "exp_diff": exp_diff,
+        })
+    return rows
+
+
+def _print_sim(title: str, rows: list[dict], mode: str) -> None:
+    print(f"\n  {title}:")
+    print(f"  {'MinEdge':>8} {'Bets':>6} {'Win%':>7} {'P&L':>9} {'ROI':>8} {'MaxDD':>7} {'AvgEdge':>8}")
+    for thr in [0.0, 0.02, 0.04, 0.06, 0.08, 0.10]:
+        r = _simulate(rows, mode, thr)
+        if r["bets"] == 0:
+            continue
+        print(f"  {thr:>8.2f} {r['bets']:>6} {r['win_rate']*100:>6.2f}% "
+              f"{r['pnl']:>9.1f} {r['roi']*100:>7.2f}% {r['max_dd']*100:>6.1f}% {r['avg_edge']:>8.3f}")
 
 
 def main() -> None:
-    # ── Load data ────────────────────────────────────────────────
     print("Loading data...")
     raw_logs = load_game_logs(CACHED_DATASET)
     feature_matrix, targets_list, meta = load_feature_data(CACHED_DATASET)
     print(f"  {len(raw_logs)} game logs, {len(feature_matrix)} feature rows")
 
-    # Build team ID → abbreviation mapping
     client = MlbClient()
     teams = client.get_teams()
     id_to_abbrev: dict[int, str] = {}
@@ -133,15 +520,12 @@ def main() -> None:
             if k in PlayerGameLog.__dataclass_fields__
         }))
 
-    targets: list[dict] = targets_list
-    features: list[dict] = feature_matrix
-
-    feat_by_key: dict[tuple[int, int], dict[str, Any]] = {}
-    for f in features:
-        feat_by_key[(f["player_id"], f["game_pk"])] = f
-    tgt_by_key: dict[tuple[int, int], dict[str, Any]] = {}
-    for t in targets:
-        tgt_by_key[(t["player_id"], t["game_pk"])] = t
+    feat_by_key: dict[tuple[int, int], dict[str, Any]] = {
+        (f["player_id"], f["game_pk"]): f for f in feature_matrix
+    }
+    tgt_by_key: dict[tuple[int, int], dict[str, Any]] = {
+        (t["player_id"], t["game_pk"]): t for t in targets_list
+    }
 
     aligned_logs: list[PlayerGameLog] = []
     aligned_feats: list[dict] = []
@@ -156,256 +540,215 @@ def main() -> None:
             aligned_tgts.append(tr)
     print(f"  Aligned: {len(aligned_logs)} games")
 
-    # All unique dates in test seasons
     test_dates = sorted(set(
-        d["date"][:10] for d in targets
+        d["date"][:10] for d in aligned_tgts
         if d["date"][:4] in ("2022", "2023", "2024", "2025")
     ))
     print(f"  {len(test_dates)} unique dates in test seasons (2022-2025)")
 
-    # ── Fetch historical odds ────────────────────────────────────
     print("\nFetching historical SBR odds (cached after first run)...")
-    date_odds = fetch_all_historical_odds(test_dates, sportsbook="betmgm")
+    date_odds: dict[str, list[dict[str, Any]]] = {}
+    cached = fetched = 0
+    for ds in test_dates:
+        odds = load_cached_odds(ds)
+        if odds is not None:
+            date_odds[ds] = odds
+            cached += 1
+        else:
+            odds = fetch_game_odds(ds, sportsbook="betmgm")
+            date_odds[ds] = odds
+            save_cached_odds(ds, odds)
+            fetched += 1
+            time.sleep(0.3)
+    print(f"  Odds: {cached} cached + {fetched} fetched = {len(date_odds)} dates")
 
-    # Build odds index: (date_str, away_abbrev, home_abbrev) → odds dict
     odds_index: dict[tuple[str, str, str], dict[str, Any]] = {}
     for ds, odds_list in date_odds.items():
         for g in odds_list:
             odds_index[(ds, g["away_team"], g["home_team"])] = g
-
     print(f"  {len(odds_index)} game-odds entries indexed")
 
-    # ── Walk-forward ensemble + compare to market ────────────────
-    print(f"\n{'=' * 60}")
-    print("Walk-forward: model predictions vs market odds")
-    print(f"{'=' * 60}")
-
-    target_col = "target_0.5"
-    team_game_results: list[dict] = []
+    moneyline_rows_raw: list[dict] = []
+    moneyline_rows_cal: list[dict] = []
+    prop_preds_05_raw: list[tuple[float, int]] = []
+    prop_preds_15_raw: list[tuple[float, int]] = []
+    prop_preds_05_iso: list[tuple[float, int]] = []
+    prop_preds_15_iso: list[tuple[float, int]] = []
 
     for fold_idx in range(len(TRAIN_SEASONS) - 1):
         train_cutoff = TRAIN_SEASONS[fold_idx]
         test_season = TRAIN_SEASONS[fold_idx + 1]
 
-        train_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
-                      if int(t["date"][:4]) <= train_cutoff]
-        test_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
-                     if int(t["date"][:4]) == test_season]
-        train_tgt = [t for t in aligned_tgts if int(t["date"][:4]) <= train_cutoff]
-        test_tgt = [t for t in aligned_tgts if int(t["date"][:4]) == test_season]
-        train_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
-                      if int(t["date"][:4]) <= train_cutoff]
-        test_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
-                     if int(t["date"][:4]) == test_season]
+        train_mask = [int(t["date"][:4]) <= train_cutoff for t in aligned_tgts]
+        test_mask = [int(t["date"][:4]) == test_season for t in aligned_tgts]
 
-        print(f"\n  Fold {fold_idx + 1}: train ≤{train_cutoff}, test={test_season}")
+        train_logs = [lg for lg, m in zip(aligned_logs, train_mask) if m]
+        test_logs = [lg for lg, m in zip(aligned_logs, test_mask) if m]
+        train_feat = [f for f, m in zip(aligned_feats, train_mask) if m]
+        test_feat = [f for f, m in zip(aligned_feats, test_mask) if m]
+        train_tgt = [t for t, m in zip(aligned_tgts, train_mask) if m]
+        test_tgt = [t for t, m in zip(aligned_tgts, test_mask) if m]
+
+        print(f"\n  Fold {fold_idx + 1}: train <= {train_cutoff}, test={test_season}")
         print(f"    Train: {len(train_logs)} logs, Test: {len(test_logs)} logs")
 
-        Xs_tr, Xc_tr, y_tr, sm, ss, fm, fs = build_hybrid_sequences(
-            train_logs, train_feat, train_tgt, target_col=target_col,
-        )
-        Xs_te, Xc_te, y_te, _, _, _, _ = build_hybrid_sequences(
-            test_logs, test_feat, test_tgt,
-            stats_mean=sm, stats_std=ss, feat_mean=fm, feat_std=fs,
-            target_col=target_col,
-        )
-        if len(Xs_tr) == 0 or len(Xs_te) == 0:
+        keys_05, hybrid_05, xgb_05, keys_05_tr, hybrid_05_tr, xgb_05_tr = _train_predict(
+            train_logs, train_feat, train_tgt, test_logs, test_feat, test_tgt, "target_0.5")
+        keys_15, hybrid_15, xgb_15, keys_15_tr, hybrid_15_tr, xgb_15_tr = _train_predict(
+            train_logs, train_feat, train_tgt, test_logs, test_feat, test_tgt, "target_1.5")
+        if keys_05 is None or keys_15 is None:
             print("    Skipping — no sequences")
             continue
 
-        train_merged = _merge_rows(train_feat, train_tgt, target_col)
-        test_merged = _merge_rows(test_feat, test_tgt, target_col)
+        # Raw ensemble probability maps (mean of hybrid + xgb), per (player, game)
+        raw_map_05 = _ensemble_map(keys_05, hybrid_05, xgb_05)
+        raw_map_15 = _ensemble_map(keys_15, hybrid_15, xgb_15)
 
-        x_train, y_tr_xgb, xgb_cols, xgb_imputer = _extract_xgb(
-            train_merged, target_col,
+        # Fit calibrators on OUT-OF-SAMPLE predictions: hold out the most
+        # recent train season, train on the rest, predict the hold-out season.
+        cal_holdout = max(s for s in TRAIN_SEASONS if s <= train_cutoff)
+        cal_train_seasons = [s for s in TRAIN_SEASONS if s <= train_cutoff and s != cal_holdout]
+        if cal_train_seasons:
+            ct_mask = [int(t["date"][:4]) in cal_train_seasons for t in aligned_tgts]
+            ch_mask = [int(t["date"][:4]) == cal_holdout for t in aligned_tgts]
+            ct_logs = [lg for lg, m in zip(aligned_logs, ct_mask) if m]
+            ct_feat = [f for f, m in zip(aligned_feats, ct_mask) if m]
+            ct_tgt = [t for t, m in zip(aligned_tgts, ct_mask) if m]
+            ch_logs = [lg for lg, m in zip(aligned_logs, ch_mask) if m]
+            ch_feat = [f for f, m in zip(aligned_feats, ch_mask) if m]
+            ch_tgt = [t for t, m in zip(aligned_tgts, ch_mask) if m]
+            cal_05 = _fit_oof_calibrator(
+                "target_0.5", ct_logs, ct_feat, ct_tgt, ch_logs, ch_feat, ch_tgt, tgt_by_key)
+        else:
+            # No season to hold out (earliest fold) — fall back to in-sample.
+            tr_p_05 = np.array([
+                (float(hybrid_05_tr[i]) + xgb_05_tr.get(k, float(hybrid_05_tr[i]))) / 2.0
+                for i, k in enumerate(keys_05_tr)
+            ])
+            tr_y_05 = np.array([int(tgt_by_key[k]["target_0.5"]) for k in keys_05_tr])
+            cal_05 = fit_calibrator(tr_p_05, tr_y_05)
+
+        cal_map_05 = {k: float(apply_calibrator(np.array([v]), cal_05)[0])
+                      for k, v in raw_map_05.items()}
+
+        # Expected hits -> team games (test), raw and calibrated
+        exp_games_raw = _expected_team_games(test_logs, keys_05, raw_map_05)
+        exp_games_cal = _expected_team_games(test_logs, keys_05, cal_map_05)
+        actual_test = _actual_team_games(test_logs)
+
+        # Win bridge from training actual hit-diff
+        win_bridge = _fit_win_bridge(train_logs)
+
+        # Player-prop predictions for calibration.
+        #  - RAW: the ensemble output, unchanged.
+        #  - ISOTONIC: per-season isotonic recalibration (cross-fit within the
+        #    season). Platt/temp is intentionally NOT used here — a single
+        #    global scaler over-corrected across seasons (ECE 0.07 -> 0.17).
+        for k, v in raw_map_05.items():
+            prop_preds_05_raw.append((v, int(tgt_by_key[k]["target_0.5"])))
+        for k, v in raw_map_15.items():
+            prop_preds_15_raw.append((v, int(tgt_by_key[k]["target_1.5"])))
+
+        iso_05 = _isotonic_cv(
+            np.array([v for v in raw_map_05.values()]),
+            np.array([int(tgt_by_key[k]["target_0.5"]) for k in raw_map_05]),
         )
-        x_test, y_te_xgb, _, _ = _extract_xgb(
-            test_merged, target_col, cols=xgb_cols, imputer=xgb_imputer,
+        for k, p in zip(raw_map_05.keys(), iso_05):
+            prop_preds_05_iso.append((float(p), int(tgt_by_key[k]["target_0.5"])))
+        iso_15 = _isotonic_cv(
+            np.array([v for v in raw_map_15.values()]),
+            np.array([int(tgt_by_key[k]["target_1.5"]) for k in raw_map_15]),
         )
+        for k, p in zip(raw_map_15.keys(), iso_15):
+            prop_preds_15_iso.append((float(p), int(tgt_by_key[k]["target_1.5"])))
 
-        xgb_model = _build_model("xgb", SEED, params=_TUNED_XGB)
-        xgb_model.fit(x_train, y_tr_xgb)
-        xgb_te_proba = xgb_model.predict_proba(x_test)[:, 1]
+        # Moneyline rows, raw and calibrated
+        rows_raw = _build_moneyline_rows(
+            exp_games_raw, actual_test, win_bridge, id_to_abbrev, odds_index)
+        rows_cal = _build_moneyline_rows(
+            exp_games_cal, actual_test, win_bridge, id_to_abbrev, odds_index)
+        moneyline_rows_raw.extend(rows_raw)
+        moneyline_rows_cal.extend(rows_cal)
 
-        hybrid_model, _ = train_hybrid_model(
-            Xs_tr, Xc_tr, y_tr,
-            hidden_dim=64, n_layers=2, dropout=0.2,
-            learning_rate=1e-3, epochs=60, batch_size=512,
-            verbose=False,
-        )
-        hybrid_te_proba = predict_hybrid_model(hybrid_model, Xs_te, Xc_te)
+        print(f"    cal_05={cal_05[0]} (T={cal_05[1]:.2f}); "
+              f"matched {len(rows_cal)} moneyline rows")
 
-        xgb_proba_map: dict[tuple[int, int], float] = {}
-        for i, row in enumerate(test_merged):
-            xgb_proba_map[(row["player_id"], row["game_pk"])] = float(xgb_te_proba[i])
-
-        # Build ensemble predictions for each test game
-        _keys_te: list[tuple[int, int]] = []
-        _feat_idx: dict[tuple[int, int], dict] = {}
-        for f in test_feat:
-            _feat_idx[(f["player_id"], f["game_pk"])] = f
-
-        _grouped: dict[tuple[int, str], list[tuple[int, Any]]] = defaultdict(list)
-        for i, lg in enumerate(test_logs):
-            _grouped[(lg.player_id, str(lg.season))].append((i, lg))
-
-        for (pid, season), entries in _grouped.items():
-            entries.sort(key=lambda e: e[1].date)
-            indices = [e[0] for e in entries]
-            vecs = [_feat_vec(e[1]) for e in entries]
-            for pos in range(SEQUENCE_LEN, len(vecs)):
-                idx = indices[pos]
-                lg = test_logs[idx]
-                if _feat_idx.get((lg.player_id, lg.game_pk)):
-                    _keys_te.append((lg.player_id, lg.game_pk))
-
-        # Aggregate to team-game level
-        team_games: dict[tuple[int, int], dict] = {}
-        for i, (pid, gpk) in enumerate(_keys_te):
-            hp = float(hybrid_te_proba[i])
-            xp = xgb_proba_map.get((pid, gpk), hp)
-            ensemble_prob = (hp + xp) / 2.0
-
-            for lg in test_logs:
-                if lg.player_id == pid and lg.game_pk == gpk:
-                    key = (lg.team_id, gpk)
-                    if key not in team_games:
-                        team_games[key] = {
-                            "team_id": lg.team_id,
-                            "game_pk": gpk,
-                            "date": lg.date[:10],
-                            "opponent_id": lg.opponent_id,
-                            "is_home": lg.is_home,
-                            "sum_probs": 0.0,
-                            "n_players": 0,
-                            "actual_team_hits": 0,
-                        }
-                    team_games[key]["sum_probs"] += ensemble_prob
-                    team_games[key]["n_players"] += 1
-                    team_games[key]["actual_team_hits"] += lg.hits
-                    break
-
-        # Match to market odds
-        fold_matched = 0
-        for key, tg in team_games.items():
-            team_abbrev = id_to_abbrev.get(tg["team_id"], "")
-            opp_abbrev = id_to_abbrev.get(tg["opponent_id"], "")
-            ds = tg["date"]
-
-            # Our team could be home or away in SBR's listing
-            odds_row = odds_index.get((ds, opp_abbrev, team_abbrev))
-            if odds_row is None:
-                odds_row = odds_index.get((ds, team_abbrev, opp_abbrev))
-
-            if odds_row is None:
-                continue
-
-            fold_matched += 1
-            tg["team_abbrev"] = team_abbrev
-            tg["opp_abbrev"] = opp_abbrev
-
-            # Determine if our team is the home or away team in SBR odds
-            if odds_row["home_team"] == team_abbrev:
-                tg["team_ml"] = odds_row["home_ml"]
-                tg["opp_ml"] = odds_row["away_ml"]
-            else:
-                tg["team_ml"] = odds_row["away_ml"]
-                tg["opp_ml"] = odds_row["home_ml"]
-
-            tg["team_implied_prob"] = ml_to_implied_prob(tg["team_ml"])
-            tg["avg_hit_prob"] = tg["sum_probs"] / max(tg["n_players"], 1)
-            team_game_results.append(tg)
-
-        n_team = len(team_games)
-        print(f"    {n_team} team-games, {fold_matched} matched to market odds")
-
-    # ── Analysis ─────────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # Moneyline +EV analysis — raw vs calibrated
+    # ------------------------------------------------------------------
     print(f"\n{'=' * 60}")
-    print("Analysis: model hit expectations vs market moneyline")
+    print("MONEYLINE +EV BACKTEST (real SBR odds, settled on game result)")
     print(f"{'=' * 60}")
 
-    if not team_game_results:
-        print("  No matched results!")
-        return
+    for tag, rows in [("RAW (uncalibrated)", moneyline_rows_raw),
+                     ("CALIBRATED (Platt/temp)", moneyline_rows_cal)]:
+        print(f"\n  === {tag}  (n={len(rows)}) ===")
+        _print_sim("Flat stake", rows, "flat")
+        _print_sim("Full Kelly (cap 1 unit)", rows, "kelly")
 
-    results = team_game_results
-    print(f"\n  {len(results)} team-game rows with both model predictions and market odds")
+        print("    Moneyline model calibration (model_prob vs realized win%):")
+        rows_sorted = sorted(rows, key=lambda r: r["model_prob"])
+        n = len(rows_sorted)
+        for lo in range(10):
+            bucket = rows_sorted[int(lo * n / 10): int((lo + 1) * n / 10)]
+            if not bucket:
+                continue
+            mp = np.mean([b["model_prob"] for b in bucket])
+            wr = np.mean([1.0 if b["win"] else 0.0 for b in bucket])
+            print(f"      p~{mp:.2f}  win%={wr*100:5.1f}  n={len(bucket)}")
 
-    # Build game index to pair home/away
-    game_pairs: dict[int, dict] = {}
-    for r in results:
-        gpk = r["game_pk"]
-        if gpk not in game_pairs:
-            game_pairs[gpk] = {}
-        game_pairs[gpk][r["team_id"]] = r
+    # ------------------------------------------------------------------
+    # Player-prop calibration — RAW plus per-season ISOTONIC recalibration.
+    # Platt/temperature scaling is NOT applied to per-player probabilities:
+    # fit on one season it over-corrects when applied to the next (temporal
+    # distribution shift), raising ECE from ~0.070 -> ~0.170 on target_0.5.
+    # The moneyline section above still uses the calibrated ensemble (there
+    # the aggregate hit-edge signal benefits from the rescaling).
+    # ------------------------------------------------------------------
+    print(f"\n{'=' * 60}")
+    print("PLAYER-PROP CALIBRATION (model prob vs realized frequency)")
+    print(f"{'=' * 60}")
+    print("  RAW      = ensemble output, unchanged.")
+    print("  ISOTONIC = per-season isotonic recalibration (cross-fit within")
+    print("             each season; tracks temporal drift).")
+    print("  Platt/temp is applied moneyline-only (hurts per-player ECE).")
 
-    # Augment results with opponent data
-    for r in results:
-        gpk = r["game_pk"]
-        pair = game_pairs.get(gpk, {})
-        opp_id = r["opponent_id"]
-        opp = pair.get(opp_id, {})
-        r["opp_sum_probs"] = opp.get("sum_probs", 0)
-        r["opp_actual_hits"] = opp.get("actual_team_hits", 0)
-        r["opp_avg_hit_prob"] = opp.get("avg_hit_prob", 0)
-        r["opp_n_players"] = opp.get("n_players", 0)
+    def _print_calib(label: str, preds: list[tuple[float, int]], tcol: str) -> None:
+        gp = [
+            GamePrediction(date=None, player_id=0, game_pk=0,
+                           predicted_prob=float(p), actual=a, hits=a, target_col=tcol)
+            for p, a in preds
+        ]
+        ece = expected_calibration_error(gp, n_bins=10)
+        obs_rate = np.mean([a for _, a in preds])
+        print(f"\n  {label}: n={len(preds)}, base rate={obs_rate:.3f}, ECE={ece:.4f}")
+        print("      Bucket   Predicted  Observed   Count")
+        print("      " + "-" * 42)
+        for b in calibration_buckets(gp, n_bins=10):
+            print(f"      [{b['bin_lower']:.2f}-{b['bin_upper']:.2f})  "
+                  f"{b['mean_predicted']:.4f}     {b['observed_freq']:.4f}   {b['count']:>6d}")
 
-    # Does our model agree with the market?
-    favorites_match = 0
-    for r in results:
-        model_fav = 1 if r["sum_probs"] > r["opp_sum_probs"] else 0
-        market_fav = 1 if (r["team_ml"] is not None and r["opp_ml"] is not None
-                          and r["team_ml"] < r["opp_ml"]) else 0
-        if model_fav == market_fav:
-            favorites_match += 1
+    for label, tcol, raw_list, iso_list in [
+        ("P(hits>=1) / target_0.5", "target_0.5", prop_preds_05_raw, prop_preds_05_iso),
+        ("P(hits>=2) / target_1.5", "target_1.5", prop_preds_15_raw, prop_preds_15_iso),
+    ]:
+        _print_calib(f"{label} [RAW]", raw_list, tcol)
+        _print_calib(f"{label} [ISOTONIC]", iso_list, tcol)
 
-    n_with_both = sum(1 for r in results if r["team_ml"] is not None and r.get("opp_ml") is not None)
-    if n_with_both > 0:
-        pct = favorites_match / n_with_both * 100
-        print(f"  Model & market agree on favorite: {favorites_match}/{n_with_both} ({pct:.1f}%)")
-
-    # Correlation: avg_hit_prob vs market implied prob
-    valid = [(r["avg_hit_prob"], r["team_implied_prob"])
-             for r in results if r["team_implied_prob"] is not None]
-    if len(valid) > 10:
-        hit_probs = np.array([v[0] for v in valid])
-        market_probs = np.array([v[1] for v in valid])
-        corr = np.corrcoef(hit_probs, market_probs)[0, 1]
-        print(f"  Correlation (avg hit prob × market win prob): {corr:.4f}")
-
-    # Edge analysis: find games where our model expects more hits than market expects wins
-    print("\n  --- Games where avg_hit_prob >> market_implied_prob ---")
-    edges = []
-    for r in results:
-        if r["team_implied_prob"] is None or r["n_players"] < 5:
-            continue
-        edge = r["avg_hit_prob"] - r["team_implied_prob"]
-        r["edge"] = edge
-        edges.append(r)
-
-    edges.sort(key=lambda x: -x["edge"])
-    print(f"  {len(edges)} games with both probabilities")
-    print(f"  {'Team':>6}  {'Opp':>6}  {'Date':>12}  {'AvgHit%':>8}  {'MktWin%':>8}  {'Edge':>8}")
-    print(f"  {'-'*6}  {'-'*6}  {'-'*12}  {'-'*8}  {'-'*8}  {'-'*8}")
-    for r in edges[:20]:
-        print(f"  {r['team_abbrev']:>6}  {r['opp_abbrev']:>6}  {r['date']:>12}  "
-              f"{r['avg_hit_prob']:>8.3f}  {r['team_implied_prob']:>8.3f}  "
-              f"{r['edge']:>+8.3f}")
-
-    # ── Betting simulation: bet on model-favored team when it disagrees with market ──
-    print("\n  --- Betting when model expects hits > market expects wins ---")
-    print(f"  {'MinEdge':>8}  {'Bets':>6}  {'WinRate':>8}  {'P&L':>8}  {'ROI':>8}")
-
-    for min_edge in [0.0, 0.05, 0.10, 0.15, 0.20, 0.25]:
-        bets = [r for r in edges if r["edge"] >= min_edge]
-        if not bets:
-            continue
-        wins = sum(1 for r in bets if r["actual_team_hits"] > r["opp_actual_hits"])
-        n = len(bets)
-        win_rate = wins / n
-        net_pnl = wins * (DECIMAL_ODDS - 1) - (n - wins)
-        roi = net_pnl / n * 100
-        print(f"  {min_edge:>8.2f}  {n:>6}  {win_rate:>8.4f}  {net_pnl:>8.2f}  {roi:>8.2f}%")
+    # Illustrative fair-line value at -110 (decimal 1.909, breakeven 0.524)
+    breakeven = 1.0 / 1.909
+    print(f"\n  Illustrative: at -110 (decimal 1.909) breakeven p = {breakeven:.3f}")
+    for label, raw_list, iso_list in [("0.5", prop_preds_05_raw, prop_preds_05_iso),
+                                      ("1.5", prop_preds_15_raw, prop_preds_15_iso)]:
+        for tag, preds in [("RAW", raw_list), ("ISOTONIC", iso_list)]:
+            val = [(p, a) for p, a in preds if p > breakeven]
+            if val:
+                realized = np.mean([a for _, a in val])
+                print(f"    target_{label} [{tag}]: model > breakeven in "
+                      f"{len(val)}/{len(preds)} ({len(val)/len(preds)*100:.1f}%); "
+                      f"realized={realized*100:.1f}% (need {breakeven*100:.1f}%)")
+            else:
+                print(f"    target_{label} [{tag}]: none above breakeven")
 
     print("\nDone.")
 
