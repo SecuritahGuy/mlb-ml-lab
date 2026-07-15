@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from datetime import date, timedelta
 
 import pytest
@@ -48,6 +49,13 @@ class TestBuildModel:
         preds = model.predict(x)
         assert len(preds) == 20
         assert set(preds).issubset({0, 1})
+
+    def test_mlx_build_raises_only_when_mlx_is_unavailable(self):
+        if importlib.util.find_spec("mlx") is not None:
+            pytest.skip("MLX is installed")
+
+        with pytest.raises(ImportError, match="MLX is required for MlxNNClassifier"):
+            _build_model("mlx", seed=42)
 
     def test_custom_params_override_defaults(self):
         model = _build_model("lr", seed=42, params={"C": 0.01})
