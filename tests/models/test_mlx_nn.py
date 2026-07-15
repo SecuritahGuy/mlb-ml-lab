@@ -36,14 +36,17 @@ class TestHitPredictor:
         assert model.training is False
 
     def test_has_parameters(self):
-        model = HitPredictor(n_features=5, hidden_dims=(8, 4))
+        # use_batch_norm=False => exactly 3 Linear layers (5→8, 8→4, 4→1)
+        # with no BatchNorm weights/bias mixed into the parameter count.
+        model = HitPredictor(
+            n_features=5, hidden_dims=(8, 4), use_batch_norm=False,
+        )
         params = model.parameters()
         flat = _flatten_params(params)
-        # 3 Linear layers: 5→8, 8→4, 4→1
-        weight_keys = [k for k in flat if "weight" in k]
-        bias_keys = [k for k in flat if "bias" in k]
-        assert len(weight_keys) == 3
-        assert len(bias_keys) == 3
+        linear_weight_keys = [k for k in flat if "weight" in k]
+        linear_bias_keys = [k for k in flat if "bias" in k]
+        assert len(linear_weight_keys) == 3
+        assert len(linear_bias_keys) == 3
 
 
 # ---------------------------------------------------------------------------

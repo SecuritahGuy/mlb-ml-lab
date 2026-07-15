@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import time
 
-import numpy as np
-
 from mlb_ml_lab import PlayerGameLog, load_feature_data, load_game_logs
 from mlb_ml_lab.models.sequence import (
     build_hybrid_sequences,
