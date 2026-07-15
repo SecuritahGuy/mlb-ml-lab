@@ -6,7 +6,11 @@ import time
 from collections import defaultdict
 
 import numpy as np
-from mlx.utils import tree_flatten
+
+try:
+    from mlx.utils import tree_flatten  # noqa: F401  # pylint: disable=import-error
+except ImportError:  # pragma: no cover
+    pass
 from sklearn.impute import SimpleImputer
 
 from mlb_ml_lab import PlayerGameLog, load_feature_data, load_game_logs

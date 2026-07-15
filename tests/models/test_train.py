@@ -37,6 +37,7 @@ class TestBuildModel:
 
     def test_mlx_build_and_smoke(self):
         # MLX needs more data for meaningful training
+        pytest.importorskip("mlx.core", reason="MLX requires Apple Silicon (macOS)")
         import numpy as np
 
         model = _build_model("mlx", seed=42, params={"epochs": 5, "hidden_dims": (4,)})
