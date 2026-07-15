@@ -5,8 +5,13 @@ from __future__ import annotations
 import tempfile
 
 import numpy as np
+import pytest
 
-from mlb_ml_lab.models.mlx_nn import (
+pytest.importorskip("mlx.core", reason="MLX requires Apple Silicon (macOS)")
+
+import mlx.core as mx  # noqa: E402  # pylint: disable=wrong-import-position,import-error
+
+from mlb_ml_lab.models.mlx_nn import (  # noqa: E402  # pylint: disable=wrong-import-position
     HitPredictor,
     MlxNNClassifier,
     _flatten_params,
@@ -23,8 +28,6 @@ from mlb_ml_lab.models.mlx_nn import (
 class TestHitPredictor:
     def test_forward_pass_shape(self):
         model = HitPredictor(n_features=10, hidden_dims=(8, 4))
-        import mlx.core as mx
-
         x = mx.random.normal((32, 10))
         y = model(x)
         assert y.shape == (32, 1)
@@ -148,8 +151,6 @@ class TestMlxNNClassifier:
 
 class TestFlattenParams:
     def test_flattens_nested_dict(self):
-        import mlx.core as mx
-
         params = {
             "net": {
                 "layers": [

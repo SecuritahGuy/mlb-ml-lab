@@ -11,11 +11,19 @@ import os
 from collections import defaultdict
 from typing import Any
 
-import mlx.core as mx
-import mlx.nn as nn
-import mlx.optimizers as optim
 import numpy as np
-from mlx.utils import tree_flatten, tree_unflatten
+
+try:
+    import mlx.core as mx
+    import mlx.nn as nn
+    import mlx.optimizers as optim
+    from mlx.utils import tree_flatten, tree_unflatten
+
+    _MLX_AVAILABLE = True
+    _NNModuleBase: type = nn.Module
+except ImportError:  # pragma: no cover
+    _MLX_AVAILABLE = False
+    _NNModuleBase = object  # type: ignore[assignment,misc]
 
 SEQUENCE_LEN = 15
 
@@ -137,7 +145,7 @@ def build_sequences(
 # ---------------------------------------------------------------------------
 
 
-class SequenceHitPredictor(nn.Module):
+class SequenceHitPredictor(_NNModuleBase):
     """GRU over recent game stat lines → sigmoid output.
 
     Architecture::
@@ -444,7 +452,7 @@ def _flatten_params(params: dict, prefix: str = "") -> dict[str, mx.array]:
 # ---------------------------------------------------------------------------
 
 
-class HybridHitPredictor(nn.Module):
+class HybridHitPredictor(_NNModuleBase):
     """GRU over stat sequences + MLP over context features → binary prediction.
 
     Architecture::
@@ -740,7 +748,7 @@ def predict_hybrid_model(
 # ---------------------------------------------------------------------------
 
 
-class MultiTaskHybridPredictor(nn.Module):
+class MultiTaskHybridPredictor(_NNModuleBase):
     """Shared GRU+MLP encoder with two output heads.
 
     Architecture::
@@ -1124,7 +1132,7 @@ def load_multi_task_model(
 # ---------------------------------------------------------------------------
 
 
-class CrossNetwork(nn.Module):
+class CrossNetwork(_NNModuleBase):
     """Cross network for explicit bounded-degree feature interactions.
 
     Each layer::
@@ -1147,7 +1155,7 @@ class CrossNetwork(nn.Module):
         return x_l
 
 
-class DCNMultiTaskPredictor(nn.Module):
+class DCNMultiTaskPredictor(_NNModuleBase):
     """GRU over sequences + lightweight DCN over context → two heads.
 
     Projects 91-dim context down to *cross_dim* first, then applies a
@@ -1426,7 +1434,7 @@ def load_dcn_model(
 # ---------------------------------------------------------------------------
 
 
-class PositionalEncoding(nn.Module):
+class PositionalEncoding(_NNModuleBase):
     """Learned positional encoding for a fixed-length sequence."""
 
     def __init__(self, max_len: int, d_model: int):
@@ -1437,7 +1445,7 @@ class PositionalEncoding(nn.Module):
         return x + self.embedding[: x.shape[1]]
 
 
-class TransformerEncoder(nn.Module):
+class TransformerEncoder(_NNModuleBase):
     """Lightweight transformer encoder over game stat sequences.
 
     Args:
@@ -1498,7 +1506,7 @@ class TransformerEncoder(nn.Module):
         return x.mean(axis=1)
 
 
-class TransformerMultiTaskPredictor(nn.Module):
+class TransformerMultiTaskPredictor(_NNModuleBase):
     """Transformer encoder over sequences + MLP over context → two heads.
 
     Architecture::

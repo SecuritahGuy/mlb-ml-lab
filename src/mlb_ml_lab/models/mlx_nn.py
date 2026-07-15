@@ -9,15 +9,23 @@ from __future__ import annotations
 from typing import Any
 
 import joblib
-import mlx.core as mx
-import mlx.nn as nn
-import mlx.optimizers as optim
 import numpy as np
-from mlx.utils import tree_flatten, tree_unflatten
 from sklearn.preprocessing import StandardScaler
 
+try:
+    import mlx.core as mx
+    import mlx.nn as nn
+    import mlx.optimizers as optim
+    from mlx.utils import tree_flatten, tree_unflatten
 
-class HitPredictor(nn.Module):
+    MLX_AVAILABLE = True
+    _NNModuleBase: type = nn.Module
+except ImportError as _mlx_import_err:  # pragma: no cover
+    MLX_AVAILABLE = False
+    _NNModuleBase = object  # type: ignore[assignment,misc]
+
+
+class HitPredictor(_NNModuleBase):
     """MLP for binary classification of MLB hit outcomes.
 
     Architecture::
@@ -32,6 +40,12 @@ class HitPredictor(nn.Module):
         dropout_prob: float = 0.3,
         use_batch_norm: bool = True,
     ):
+        if not MLX_AVAILABLE:  # pragma: no cover
+            raise ImportError(
+                "MLX is required for HitPredictor but is not installed. "
+                "MLX only runs on Apple Silicon (macOS). "
+                "Install it with: pip install mlx"
+            )
         super().__init__()
         dims = (n_features, *hidden_dims, 1)
         layers: list[nn.Module] = []
@@ -92,6 +106,12 @@ class MlxNNClassifier:
         l2_reg: float = 1e-5,
         seed: int = 42,
     ):
+        if not MLX_AVAILABLE:  # pragma: no cover
+            raise ImportError(
+                "MLX is required for MlxNNClassifier but is not installed. "
+                "MLX only runs on Apple Silicon (macOS). "
+                "Install it with: pip install mlx"
+            )
         self.hidden_dims = hidden_dims
         self.dropout_prob = dropout_prob
         self.use_batch_norm = use_batch_norm

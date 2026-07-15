@@ -247,6 +247,7 @@ description = "A framework for machine learning on Apple silicon."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "sys_platform == \"darwin\""
 files = [
     {file = "mlx-0.32.0-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:c6feb17e32160b70c7634aab925cf3f8c5c7bebbf99f227c48450478e1008af2"},
     {file = "mlx-0.32.0-cp310-cp310-macosx_15_0_arm64.whl", hash = "sha256:73303259f2bda7fb4a0c782a7299e0e28a2890b9b6fbfc4b635fb8032208ec7e"},
@@ -301,7 +302,7 @@ description = "A framework for machine learning on Apple silicon."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "platform_system == \"Darwin\""
+markers = "sys_platform == \"darwin\" and platform_system == \"Darwin\""
 files = [
     {file = "mlx_metal-0.32.0-py3-none-macosx_14_0_arm64.whl", hash = "sha256:5b64b20ac24b0c401f489de01e8209edc4d372125201f19314e6f39e385322aa"},
     {file = "mlx_metal-0.32.0-py3-none-macosx_15_0_arm64.whl", hash = "sha256:1bd94a1ce5b03a0c898771a3e759f0124300c6ab5155127906a1d50b1f3fcf19"},
@@ -862,4 +863,4 @@ scikit-learn = ["scikit-learn"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12"
-content-hash = "80a15155c8a0687d1d15610b3c85845c6955ea08aff03ca46fe5da44750504f6"
+content-hash = "0955a548a4b150115a654a2797739d967e7f94cc9e5c12176ac1f4745ce22165"

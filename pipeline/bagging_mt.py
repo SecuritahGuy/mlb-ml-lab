@@ -11,8 +11,12 @@ import random
 import warnings
 from typing import Any
 
-import mlx.core as mx
 import numpy as np
+
+try:
+    import mlx.core as mx  # pylint: disable=import-error
+except ImportError:  # pragma: no cover
+    pass
 from sklearn.exceptions import ConvergenceWarning
 
 from mlb_ml_lab import PlayerGameLog, load_feature_data, load_game_logs
