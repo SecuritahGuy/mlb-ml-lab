@@ -13,8 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from meteostat import Point, Stations, Hourly
-from meteostat.units import imperial
+from meteostat import Stations, Hourly
 
 from mlb_ml_lab.data.weather import INDOOR_VENUES, VENUE_COORDS
 
@@ -195,8 +194,7 @@ class MeteostatWeather:
             return None
 
         lat, lon = coords
-        pt = Point(lat, lon)
-        nearby = Stations().nearby(pt)
+        nearby = Stations().nearby(lat, lon)
         if nearby is None or nearby.empty:
             return None
 
@@ -244,7 +242,7 @@ class MeteostatWeather:
             self._rate_limiter.wait()
             try:
                 ts = Hourly(station_id, month_start, month_end)
-                df = ts.fetch(units=imperial)
+                df = ts.fetch()
             except Exception:  # pylint: disable=broad-exception-caught
                 logger.warning(
                     "Meteostat fetch failed for %s %s (attempt %d)",
