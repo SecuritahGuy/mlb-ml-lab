@@ -8,7 +8,8 @@ import sys
 
 def test_package_import_does_not_eagerly_import_train_module():
     result = subprocess.run(
-        [sys.executable, "-c", "import sys, mlb_ml_lab; print('mlb_ml_lab.models.train' in sys.modules)"],
+        [sys.executable, "-c",
+         "import sys, mlb_ml_lab; print('mlb_ml_lab.models.train' in sys.modules)"],
         check=True,
         capture_output=True,
         text=True,
