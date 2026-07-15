@@ -26,6 +26,8 @@ scikit-learn = "^1.9.0"
 xgboost = "^3.3.0"
 lightgbm = "^4.6.0"
 mlx = "^0.32.0"
+pandas = "^2.2"
+meteostat = "^1.6"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8"
