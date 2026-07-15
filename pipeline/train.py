@@ -71,9 +71,9 @@ def main() -> None:
     all_player_ids: set[int] = set()
 
     for season in TRAIN_SEASONS:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Season {season}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         roster_players: list[dict[str, Any]] = []
         for tid in all_team_ids:
@@ -98,12 +98,16 @@ def main() -> None:
             except Exception:  # pylint: disable=broad-exception-caught
                 pass
             if (i + 1) % 100 == 0:
-                print(f"    ... {i+1}/{n_players} players ({logs_this_season} game logs)")
+                print(
+                    f"    ... {i + 1}/{n_players} players ({logs_this_season} game logs)"
+                )
 
         print(f"  {logs_this_season} game log rows for season {season}")
 
-    print(f"\nTotal: {len(all_game_logs)} game log rows, "
-          f"{len(all_player_ids)} unique players")
+    print(
+        f"\nTotal: {len(all_game_logs)} game log rows, "
+        f"{len(all_player_ids)} unique players"
+    )
 
     print("\nFetching enriched schedules...")
     schedule_lookups: dict[int, dict[str, Any]] = {}
@@ -160,7 +164,7 @@ def main() -> None:
         except Exception:  # pylint: disable=broad-exception-caught
             pass
         if (i + 1) % 200 == 0:
-            print(f"    ... {i+1}/{len(all_player_ids)} players")
+            print(f"    ... {i + 1}/{len(all_player_ids)} players")
     print(f"  {len(player_details)} player details")
 
     print("Fetching bullpen stats...")
@@ -194,7 +198,8 @@ def main() -> None:
     for tid in opp_ids:
         try:
             leaders = client.get_team_leaders(
-                tid, TRAIN_SEASONS[-1],
+                tid,
+                TRAIN_SEASONS[-1],
                 leader_categories=["battingAverage", "homeRuns", "runsBattedIn"],
                 limit=1,
             )
@@ -258,9 +263,9 @@ def _run_training(
 
     Shared by both the live-fetch path and the ``--use-cached`` path.
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Walk-forward validation (season-boundary splits)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     for target_col in ("target_0.5", "target_1.5"):
         print(f"\n--- Target: {target_col} ---")
@@ -280,19 +285,26 @@ def _run_training(
             print(f"    Avg AUC:      {mdata['avg_auc']:.4f}")
             print(f"    Folds:        {mdata['n_folds']}")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Training final model on all available seasons")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Best params from hyperparameter tuning (XGB, target_1.5)
     _TUNED_XGB = {
-        "n_estimators": 500, "max_depth": 5, "learning_rate": 0.01,
-        "subsample": 0.8, "colsample_bytree": 1.0, "min_child_weight": 1,
+        "n_estimators": 500,
+        "max_depth": 5,
+        "learning_rate": 0.01,
+        "subsample": 0.8,
+        "colsample_bytree": 1.0,
+        "min_child_weight": 1,
     }
 
     final_result = train_final(
-        feature_matrix, targets, target_col="target_1.5",
-        model_type="xgb", params=_TUNED_XGB,
+        feature_matrix,
+        targets,
+        target_col="target_1.5",
+        model_type="xgb",
+        params=_TUNED_XGB,
     )
     if final_result["model"] is None:
         print("  ERROR: final training failed")
@@ -318,8 +330,11 @@ def _run_training(
 
     # Also train final model for target_0.5
     final_05 = train_final(
-        feature_matrix, targets, target_col="target_0.5",
-        model_type="xgb", params=_TUNED_XGB,
+        feature_matrix,
+        targets,
+        target_col="target_0.5",
+        model_type="xgb",
+        params=_TUNED_XGB,
     )
     if final_05["model"] is not None:
         save_model(

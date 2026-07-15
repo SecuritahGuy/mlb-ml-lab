@@ -23,7 +23,10 @@ from mlb_ml_lab.evaluation.backtest import (
 
 
 def _feature_row(
-    player_id: int, game_pk: int, d: str, feat_val: float = 0.5,
+    player_id: int,
+    game_pk: int,
+    d: str,
+    feat_val: float = 0.5,
 ) -> dict:
     return {
         "player_id": player_id,
@@ -34,7 +37,10 @@ def _feature_row(
 
 
 def _target_row(
-    player_id: int, game_pk: int, d: str, hits: int = 0,
+    player_id: int,
+    game_pk: int,
+    d: str,
+    hits: int = 0,
 ) -> dict:
     return {
         "player_id": player_id,
@@ -50,6 +56,7 @@ class TestWalkForwardPredict:
     def _make_dates(self, n: int) -> list[date]:
         """Generate *n* unique dates starting from 2025-04-01."""
         from datetime import timedelta
+
         start = date(2025, 4, 1)
         return [start + timedelta(days=i) for i in range(n)]
 
@@ -57,7 +64,9 @@ class TestWalkForwardPredict:
         n = 31
         # Mix positive and negative examples so the model can train
         feat = [
-            _feature_row(1, 100 + i, d.isoformat(), feat_val=0.5 + (0.1 if i < 15 else -0.1))
+            _feature_row(
+                1, 100 + i, d.isoformat(), feat_val=0.5 + (0.1 if i < 15 else -0.1)
+            )
             for i, d in enumerate(self._make_dates(n))
         ]
         tgt = [
@@ -65,7 +74,11 @@ class TestWalkForwardPredict:
             for i, d in enumerate(self._make_dates(n))
         ]
         preds = walk_forward_predict(
-            feat, tgt, target_col="target_0.5", model_type="lr", n_splits=1,
+            feat,
+            tgt,
+            target_col="target_0.5",
+            model_type="lr",
+            n_splits=1,
         )
         assert len(preds) >= 1
         assert isinstance(preds[0], GamePrediction)

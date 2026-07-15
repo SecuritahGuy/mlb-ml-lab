@@ -57,14 +57,19 @@ SEED = 42
 MIN_PLAYERS = 6  # require a reasonable lineup share to bet a team-game
 
 _TUNED_XGB = {
-    "n_estimators": 400, "max_depth": 5, "learning_rate": 0.01,
-    "subsample": 0.8, "colsample_bytree": 1.0, "min_child_weight": 1,
+    "n_estimators": 400,
+    "max_depth": 5,
+    "learning_rate": 0.01,
+    "subsample": 0.8,
+    "colsample_bytree": 1.0,
+    "min_child_weight": 1,
 }
 
 
 # ---------------------------------------------------------------------------
 # Odds math
 # ---------------------------------------------------------------------------
+
 
 def ml_to_implied_prob(ml: int | float | None) -> float | None:
     """Convert American moneyline odds to implied probability (with vig)."""
@@ -98,8 +103,11 @@ def fair_prob(ml_ours: int, ml_opp: int) -> float:
 # Data helpers
 # ---------------------------------------------------------------------------
 
+
 def _merge_rows(
-    feat_rows: list[dict], tgt_rows: list[dict], target_col: str,
+    feat_rows: list[dict],
+    tgt_rows: list[dict],
+    target_col: str,
 ) -> list[dict]:
     merged: list[dict] = []
     for fr, tr in zip(feat_rows, tgt_rows):
@@ -110,7 +118,9 @@ def _merge_rows(
 
 
 def _extract_xgb(
-    merged_rows: list[dict], target_col: str, cols: list[str] | None = None,
+    merged_rows: list[dict],
+    target_col: str,
+    cols: list[str] | None = None,
     imputer: SimpleImputer | None = None,
 ) -> tuple[np.ndarray, np.ndarray, list[str], SimpleImputer]:
     if cols is None:
@@ -130,8 +140,9 @@ def _extract_xgb(
     return x, y, cols, imputer
 
 
-def _build_hybrid_keys(logs: list[PlayerGameLog], feat_rows: list[dict],
-                       tgt_rows: list[dict]) -> list[tuple[int, int]]:
+def _build_hybrid_keys(
+    logs: list[PlayerGameLog], feat_rows: list[dict], tgt_rows: list[dict]
+) -> list[tuple[int, int]]:
     """Reconstruct (player_id, game_pk) order produced by build_hybrid_sequences.
 
     Must mirror the skip logic inside build_hybrid_sequences exactly so the
@@ -144,7 +155,7 @@ def _build_hybrid_keys(logs: list[PlayerGameLog], feat_rows: list[dict],
         grouped[(lg.player_id, str(lg.season))].append((i, lg))
 
     keys: list[tuple[int, int]] = []
-    for (pid, season), entries in grouped.items():
+    for (_pid, _season), entries in grouped.items():
         entries.sort(key=lambda e: e[1].date)
         for pos in range(SEQUENCE_LEN, len(entries)):
             idx = entries[pos][0]
@@ -166,9 +177,13 @@ def _actual_team_games(
         key = (lg.team_id, lg.game_pk)
         if key not in agg:
             agg[key] = {
-                "team_id": lg.team_id, "game_pk": lg.game_pk,
-                "date": lg.date[:10], "opponent_id": lg.opponent_id,
-                "hits": 0, "n_players": 0, "win": bool(lg.is_win),
+                "team_id": lg.team_id,
+                "game_pk": lg.game_pk,
+                "date": lg.date[:10],
+                "opponent_id": lg.opponent_id,
+                "hits": 0,
+                "n_players": 0,
+                "win": bool(lg.is_win),
             }
         agg[key]["hits"] += int(lg.hits)
         agg[key]["n_players"] += 1
@@ -188,20 +203,24 @@ def _ensemble_map(
 
 
 def _expected_team_games(
-    logs: list[PlayerGameLog], keys: list[tuple[int, int]],
+    logs: list[PlayerGameLog],
+    keys: list[tuple[int, int]],
     prob_map: dict[tuple[int, int], float],
 ) -> dict[tuple[int, int], dict[str, Any]]:
     """Aggregate ensemble hit probability to expected team hits per game."""
     games: dict[tuple[int, int], dict[str, Any]] = {}
-    for i, (pid, gpk) in enumerate(keys):
+    for _i, (pid, gpk) in enumerate(keys):
         ensemble = prob_map.get((pid, gpk), 0.0)
         lg = next(row for row in logs if row.player_id == pid and row.game_pk == gpk)
         key = (lg.team_id, lg.game_pk)
         if key not in games:
             games[key] = {
-                "team_id": lg.team_id, "game_pk": lg.game_pk,
-                "date": lg.date[:10], "opponent_id": lg.opponent_id,
-                "exp_hits": 0.0, "n_players": 0,
+                "team_id": lg.team_id,
+                "game_pk": lg.game_pk,
+                "date": lg.date[:10],
+                "opponent_id": lg.opponent_id,
+                "exp_hits": 0.0,
+                "n_players": 0,
             }
         games[key]["exp_hits"] += ensemble
         games[key]["n_players"] += 1
@@ -212,6 +231,7 @@ def _expected_team_games(
 # Bridge: expected hit-diff -> win probability (walk-forward, train only)
 # ---------------------------------------------------------------------------
 
+
 def _fit_win_bridge(train_logs: list[PlayerGameLog]) -> LogisticRegression:
     """Fit logistic regression mapping real team hit-diff to win.
 
@@ -221,7 +241,7 @@ def _fit_win_bridge(train_logs: list[PlayerGameLog]) -> LogisticRegression:
     tg = _actual_team_games(train_logs)
     rows_x: list[list[float]] = []
     rows_y: list[int] = []
-    for key, g in tg.items():
+    for _key, g in tg.items():
         opp = tg.get((g["opponent_id"], g["game_pk"]))
         if opp is None:
             continue
@@ -237,6 +257,7 @@ def _fit_win_bridge(train_logs: list[PlayerGameLog]) -> LogisticRegression:
 # Probability calibration (fix overconfidence) — walk-forward, train only
 # ---------------------------------------------------------------------------
 
+
 def _logit(p: np.ndarray) -> np.ndarray:
     p = np.clip(p, 1e-6, 1.0 - 1e-6)
     return np.log(p / (1.0 - p))
@@ -245,11 +266,11 @@ def _logit(p: np.ndarray) -> np.ndarray:
 def _fit_temperature(train_p: np.ndarray, train_y: np.ndarray) -> float:
     """Grid-search the temperature T (softmax-style) minimising Brier on train."""
     best_T, best_b = 1.0, float("inf")
-    for T in np.linspace(0.5, 2.5, 41):
-        sp = 1.0 / (1.0 + np.exp(-_logit(train_p) / T))
+    for threshold in np.linspace(0.5, 2.5, 41):
+        sp = 1.0 / (1.0 + np.exp(-_logit(train_p) / threshold))
         b = float(np.mean((sp - train_y) ** 2))
         if b < best_b:
-            best_b, best_T = b, T
+            best_b, best_T = b, threshold
     return best_T
 
 
@@ -261,12 +282,13 @@ def _fit_platt(train_p: np.ndarray, train_y: np.ndarray) -> LogisticRegression:
 
 
 def fit_calibrator(
-    train_p: np.ndarray, train_y: np.ndarray,
+    train_p: np.ndarray,
+    train_y: np.ndarray,
 ) -> tuple[str, float, LogisticRegression | None]:
     """Fit a calibrator on training predictions, choosing Platt vs temperature
     by lower Brier score. Returns ``(method, temperature, platt_model)``."""
-    T = _fit_temperature(train_p, train_y)
-    p_temp = 1.0 / (1.0 + np.exp(-_logit(train_p) / T))
+    threshold = _fit_temperature(train_p, train_y)
+    p_temp = 1.0 / (1.0 + np.exp(-_logit(train_p) / threshold))
     b_temp = float(np.mean((p_temp - train_y) ** 2))
 
     platt = _fit_platt(train_p, train_y)
@@ -274,24 +296,29 @@ def fit_calibrator(
     b_platt = float(np.mean((p_platt - train_y) ** 2))
 
     if b_platt <= b_temp:
-        return "platt", T, platt
-    return "temp", T, None
+        return "platt", threshold, platt
+    return "temp", threshold, None
 
 
 def apply_calibrator(
-    p: np.ndarray, cal: tuple[str, float, LogisticRegression | None],
+    p: np.ndarray,
+    cal: tuple[str, float, LogisticRegression | None],
 ) -> np.ndarray:
     """Apply a calibrator fitted by ``fit_calibrator``."""
-    method, T, platt = cal
+    method, threshold, platt = cal
     if method == "platt" and platt is not None:
         return platt.predict_proba(_logit(p).reshape(-1, 1))[:, 1]
-    return 1.0 / (1.0 + np.exp(-_logit(p) / T))
+    return 1.0 / (1.0 + np.exp(-_logit(p) / threshold))
 
 
 def _fit_oof_calibrator(
     target_col: str,
-    cal_train_logs, cal_train_feat, cal_train_tgt,
-    cal_hold_logs, cal_hold_feat, cal_hold_tgt,
+    cal_train_logs,
+    cal_train_feat,
+    cal_train_tgt,
+    cal_hold_logs,
+    cal_hold_feat,
+    cal_hold_tgt,
     tgt_by_key: dict,
 ) -> tuple[str, float, LogisticRegression | None] | None:
     """Fit a calibrator on OUT-OF-SAMPLE predictions.
@@ -301,20 +328,30 @@ def _fit_oof_calibrator(
     in-sample optimism of fitting a calibrator on a model's own training data.
     """
     keys, hybrid, xgb_map, _, _, _ = _train_predict(
-        cal_train_logs, cal_train_feat, cal_train_tgt,
-        cal_hold_logs, cal_hold_feat, cal_hold_tgt, target_col)
+        cal_train_logs,
+        cal_train_feat,
+        cal_train_tgt,
+        cal_hold_logs,
+        cal_hold_feat,
+        cal_hold_tgt,
+        target_col,
+    )
     if keys is None or len(keys) == 0:
         return None
-    p = np.array([
-        (float(hybrid[i]) + xgb_map.get(k, float(hybrid[i]))) / 2.0
-        for i, k in enumerate(keys)
-    ])
+    p = np.array(
+        [
+            (float(hybrid[i]) + xgb_map.get(k, float(hybrid[i]))) / 2.0
+            for i, k in enumerate(keys)
+        ]
+    )
     y = np.array([int(tgt_by_key[k][target_col]) for k in keys])
     return fit_calibrator(p, y)
 
 
 def _isotonic_cv(
-    raw_p: np.ndarray, y: np.ndarray, n_splits: int = 5,
+    raw_p: np.ndarray,
+    y: np.ndarray,
+    n_splits: int = 5,
 ) -> np.ndarray:
     """Leakage-free per-season isotonic calibration via internal cross-fitting.
 
@@ -344,24 +381,47 @@ def _isotonic_cv(
 # Ensemble training + prediction for one target threshold
 # ---------------------------------------------------------------------------
 
+
 def _train_predict(
-    train_logs, train_feat, train_tgt, test_logs, test_feat, test_tgt, target_col,
+    train_logs,
+    train_feat,
+    train_tgt,
+    test_logs,
+    test_feat,
+    test_tgt,
+    target_col,
 ):
     """Train hybrid + xgb on ``target_col`` and return test ensemble per key."""
     Xs_tr, Xc_tr, y_tr, sm, ss, fm, fs = build_hybrid_sequences(
-        train_logs, train_feat, train_tgt, target_col=target_col,
+        train_logs,
+        train_feat,
+        train_tgt,
+        target_col=target_col,
     )
-    Xs_te, Xc_te, y_te, _, _, _, _ = build_hybrid_sequences(
-        test_logs, test_feat, test_tgt,
-        stats_mean=sm, stats_std=ss, feat_mean=fm, feat_std=fs,
+    Xs_te, Xc_te, _y_te, _, _, _, _ = build_hybrid_sequences(
+        test_logs,
+        test_feat,
+        test_tgt,
+        stats_mean=sm,
+        stats_std=ss,
+        feat_mean=fm,
+        feat_std=fs,
         target_col=target_col,
     )
     if len(Xs_tr) == 0 or len(Xs_te) == 0:
         return None, None, None
 
     hybrid_model, _ = train_hybrid_model(
-        Xs_tr, Xc_tr, y_tr, hidden_dim=64, n_layers=2, dropout=0.2,
-        learning_rate=1e-3, epochs=40, batch_size=512, verbose=False,
+        Xs_tr,
+        Xc_tr,
+        y_tr,
+        hidden_dim=64,
+        n_layers=2,
+        dropout=0.2,
+        learning_rate=1e-3,
+        epochs=40,
+        batch_size=512,
+        verbose=False,
     )
     hybrid_proba = predict_hybrid_model(hybrid_model, Xs_te, Xc_te)
 
@@ -369,7 +429,10 @@ def _train_predict(
     test_merged = _merge_rows(test_feat, test_tgt, target_col)
     x_train, y_tr_xgb, xgb_cols, xgb_imputer = _extract_xgb(train_merged, target_col)
     x_test, _, _, _ = _extract_xgb(
-        test_merged, target_col, cols=xgb_cols, imputer=xgb_imputer,
+        test_merged,
+        target_col,
+        cols=xgb_cols,
+        imputer=xgb_imputer,
     )
     xgb_model = _build_model("xgb", SEED, params=_TUNED_XGB)
     xgb_model.fit(x_train, y_tr_xgb)
@@ -394,6 +457,7 @@ def _train_predict(
 # Betting simulation
 # ---------------------------------------------------------------------------
 
+
 def _simulate(records: list[dict], mode: str, min_edge: float) -> dict[str, float]:
     """Simulate moneyline bets.
 
@@ -404,8 +468,15 @@ def _simulate(records: list[dict], mode: str, min_edge: float) -> dict[str, floa
     bets = [r for r in records if r["edge"] >= min_edge and r["decimal_odds"] > 1.0]
     n = len(bets)
     if n == 0:
-        return {"bets": 0, "wins": 0, "win_rate": 0.0, "pnl": 0.0,
-                "roi": 0.0, "max_dd": 0.0, "avg_edge": 0.0}
+        return {
+            "bets": 0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "pnl": 0.0,
+            "roi": 0.0,
+            "max_dd": 0.0,
+            "avg_edge": 0.0,
+        }
 
     # Equity starts at `n` units (one unit per bet) so drawdown is bounded.
     equity = float(n)
@@ -449,8 +520,11 @@ def _simulate(records: list[dict], mode: str, min_edge: float) -> dict[str, floa
 
 
 def _build_moneyline_rows(
-    exp_games: dict, actual_test: dict, win_bridge: LogisticRegression,
-    id_to_abbrev: dict[int, str], odds_index: dict,
+    exp_games: dict,
+    actual_test: dict,
+    win_bridge: LogisticRegression,
+    id_to_abbrev: dict[int, str],
+    odds_index: dict,
 ) -> list[dict]:
     """Match team-games to SBR moneylines and emit moneyline bet records."""
     rows: list[dict] = []
@@ -458,7 +532,11 @@ def _build_moneyline_rows(
         team_abbrev = id_to_abbrev.get(g["team_id"], "")
         opp_abbrev = id_to_abbrev.get(g["opponent_id"], "")
         opp = exp_games.get((g["opponent_id"], g["game_pk"]))
-        if opp is None or g["n_players"] < MIN_PLAYERS or opp["n_players"] < MIN_PLAYERS:
+        if (
+            opp is None
+            or g["n_players"] < MIN_PLAYERS
+            or opp["n_players"] < MIN_PLAYERS
+        ):
             continue
         ds = g["date"]
         odds_row = odds_index.get((ds, opp_abbrev, team_abbrev))
@@ -479,31 +557,43 @@ def _build_moneyline_rows(
         decimal = american_to_decimal(ml_ours)
         if decimal <= 1.0:
             continue
-        rows.append({
-            "date": ds, "team": team_abbrev, "opp": opp_abbrev,
-            "model_prob": model_prob, "fair_prob": fair,
-            "decimal_odds": decimal, "edge": model_prob - fair,
-            "win": bool(actual_test[key]["win"]),
-            "exp_diff": exp_diff,
-        })
+        rows.append(
+            {
+                "date": ds,
+                "team": team_abbrev,
+                "opp": opp_abbrev,
+                "model_prob": model_prob,
+                "fair_prob": fair,
+                "decimal_odds": decimal,
+                "edge": model_prob - fair,
+                "win": bool(actual_test[key]["win"]),
+                "exp_diff": exp_diff,
+            }
+        )
     return rows
 
 
 def _print_sim(title: str, rows: list[dict], mode: str) -> None:
     print(f"\n  {title}:")
-    print(f"  {'MinEdge':>8} {'Bets':>6} {'Win%':>7} {'P&L':>9} {'ROI':>8} {'MaxDD':>7} {'AvgEdge':>8}")
+    print(
+        f"  {'MinEdge':>8} {'Bets':>6} {'Win%':>7} {'P&L':>9} {'ROI':>8} "
+        f"{'MaxDD':>7} {'AvgEdge':>8}"
+    )
     for thr in [0.0, 0.02, 0.04, 0.06, 0.08, 0.10]:
         r = _simulate(rows, mode, thr)
         if r["bets"] == 0:
             continue
-        print(f"  {thr:>8.2f} {r['bets']:>6} {r['win_rate']*100:>6.2f}% "
-              f"{r['pnl']:>9.1f} {r['roi']*100:>7.2f}% {r['max_dd']*100:>6.1f}% {r['avg_edge']:>8.3f}")
+        print(
+            f"  {thr:>8.2f} {r['bets']:>6} {r['win_rate'] * 100:>6.2f}% "
+            f"{r['pnl']:>9.1f} {r['roi'] * 100:>7.2f}% "
+            f"{r['max_dd'] * 100:>6.1f}% {r['avg_edge']:>8.3f}"
+        )
 
 
 def main() -> None:
     print("Loading data...")
     raw_logs = load_game_logs(CACHED_DATASET)
-    feature_matrix, targets_list, meta = load_feature_data(CACHED_DATASET)
+    feature_matrix, targets_list, _meta = load_feature_data(CACHED_DATASET)
     print(f"  {len(raw_logs)} game logs, {len(feature_matrix)} feature rows")
 
     client = MlbClient()
@@ -515,10 +605,15 @@ def main() -> None:
 
     game_logs: list[PlayerGameLog] = []
     for d in raw_logs:
-        game_logs.append(PlayerGameLog(**{
-            k: v for k, v in d.items()
-            if k in PlayerGameLog.__dataclass_fields__
-        }))
+        game_logs.append(
+            PlayerGameLog(
+                **{
+                    k: v
+                    for k, v in d.items()
+                    if k in PlayerGameLog.__dataclass_fields__
+                }
+            )
+        )
 
     feat_by_key: dict[tuple[int, int], dict[str, Any]] = {
         (f["player_id"], f["game_pk"]): f for f in feature_matrix
@@ -540,10 +635,13 @@ def main() -> None:
             aligned_tgts.append(tr)
     print(f"  Aligned: {len(aligned_logs)} games")
 
-    test_dates = sorted(set(
-        d["date"][:10] for d in aligned_tgts
-        if d["date"][:4] in ("2022", "2023", "2024", "2025")
-    ))
+    test_dates = sorted(
+        set(
+            d["date"][:10]
+            for d in aligned_tgts
+            if d["date"][:4] in ("2022", "2023", "2024", "2025")
+        )
+    )
     print(f"  {len(test_dates)} unique dates in test seasons (2022-2025)")
 
     print("\nFetching historical SBR odds (cached after first run)...")
@@ -592,10 +690,28 @@ def main() -> None:
         print(f"\n  Fold {fold_idx + 1}: train <= {train_cutoff}, test={test_season}")
         print(f"    Train: {len(train_logs)} logs, Test: {len(test_logs)} logs")
 
-        keys_05, hybrid_05, xgb_05, keys_05_tr, hybrid_05_tr, xgb_05_tr = _train_predict(
-            train_logs, train_feat, train_tgt, test_logs, test_feat, test_tgt, "target_0.5")
-        keys_15, hybrid_15, xgb_15, keys_15_tr, hybrid_15_tr, xgb_15_tr = _train_predict(
-            train_logs, train_feat, train_tgt, test_logs, test_feat, test_tgt, "target_1.5")
+        keys_05, hybrid_05, xgb_05, keys_05_tr, hybrid_05_tr, xgb_05_tr = (
+            _train_predict(
+                train_logs,
+                train_feat,
+                train_tgt,
+                test_logs,
+                test_feat,
+                test_tgt,
+                "target_0.5",
+            )
+        )
+        keys_15, hybrid_15, xgb_15, _keys_15_tr, _hybrid_15_tr, _xgb_15_tr = (
+            _train_predict(
+                train_logs,
+                train_feat,
+                train_tgt,
+                test_logs,
+                test_feat,
+                test_tgt,
+                "target_1.5",
+            )
+        )
         if keys_05 is None or keys_15 is None:
             print("    Skipping — no sequences")
             continue
@@ -607,7 +723,9 @@ def main() -> None:
         # Fit calibrators on OUT-OF-SAMPLE predictions: hold out the most
         # recent train season, train on the rest, predict the hold-out season.
         cal_holdout = max(s for s in TRAIN_SEASONS if s <= train_cutoff)
-        cal_train_seasons = [s for s in TRAIN_SEASONS if s <= train_cutoff and s != cal_holdout]
+        cal_train_seasons = [
+            s for s in TRAIN_SEASONS if s <= train_cutoff and s != cal_holdout
+        ]
         if cal_train_seasons:
             ct_mask = [int(t["date"][:4]) in cal_train_seasons for t in aligned_tgts]
             ch_mask = [int(t["date"][:4]) == cal_holdout for t in aligned_tgts]
@@ -618,18 +736,31 @@ def main() -> None:
             ch_feat = [f for f, m in zip(aligned_feats, ch_mask) if m]
             ch_tgt = [t for t, m in zip(aligned_tgts, ch_mask) if m]
             cal_05 = _fit_oof_calibrator(
-                "target_0.5", ct_logs, ct_feat, ct_tgt, ch_logs, ch_feat, ch_tgt, tgt_by_key)
+                "target_0.5",
+                ct_logs,
+                ct_feat,
+                ct_tgt,
+                ch_logs,
+                ch_feat,
+                ch_tgt,
+                tgt_by_key,
+            )
         else:
             # No season to hold out (earliest fold) — fall back to in-sample.
-            tr_p_05 = np.array([
-                (float(hybrid_05_tr[i]) + xgb_05_tr.get(k, float(hybrid_05_tr[i]))) / 2.0
-                for i, k in enumerate(keys_05_tr)
-            ])
+            tr_p_05 = np.array(
+                [
+                    (float(hybrid_05_tr[i]) + xgb_05_tr.get(k, float(hybrid_05_tr[i])))
+                    / 2.0
+                    for i, k in enumerate(keys_05_tr)
+                ]
+            )
             tr_y_05 = np.array([int(tgt_by_key[k]["target_0.5"]) for k in keys_05_tr])
             cal_05 = fit_calibrator(tr_p_05, tr_y_05)
 
-        cal_map_05 = {k: float(apply_calibrator(np.array([v]), cal_05)[0])
-                      for k, v in raw_map_05.items()}
+        cal_map_05 = {
+            k: float(apply_calibrator(np.array([v]), cal_05)[0])
+            for k, v in raw_map_05.items()
+        }
 
         # Expected hits -> team games (test), raw and calibrated
         exp_games_raw = _expected_team_games(test_logs, keys_05, raw_map_05)
@@ -650,13 +781,13 @@ def main() -> None:
             prop_preds_15_raw.append((v, int(tgt_by_key[k]["target_1.5"])))
 
         iso_05 = _isotonic_cv(
-            np.array([v for v in raw_map_05.values()]),
+            np.array(list(raw_map_05.values())),
             np.array([int(tgt_by_key[k]["target_0.5"]) for k in raw_map_05]),
         )
         for k, p in zip(raw_map_05.keys(), iso_05):
             prop_preds_05_iso.append((float(p), int(tgt_by_key[k]["target_0.5"])))
         iso_15 = _isotonic_cv(
-            np.array([v for v in raw_map_15.values()]),
+            np.array(list(raw_map_15.values())),
             np.array([int(tgt_by_key[k]["target_1.5"]) for k in raw_map_15]),
         )
         for k, p in zip(raw_map_15.keys(), iso_15):
@@ -664,14 +795,18 @@ def main() -> None:
 
         # Moneyline rows, raw and calibrated
         rows_raw = _build_moneyline_rows(
-            exp_games_raw, actual_test, win_bridge, id_to_abbrev, odds_index)
+            exp_games_raw, actual_test, win_bridge, id_to_abbrev, odds_index
+        )
         rows_cal = _build_moneyline_rows(
-            exp_games_cal, actual_test, win_bridge, id_to_abbrev, odds_index)
+            exp_games_cal, actual_test, win_bridge, id_to_abbrev, odds_index
+        )
         moneyline_rows_raw.extend(rows_raw)
         moneyline_rows_cal.extend(rows_cal)
 
-        print(f"    cal_05={cal_05[0]} (T={cal_05[1]:.2f}); "
-              f"matched {len(rows_cal)} moneyline rows")
+        print(
+            f"    cal_05={cal_05[0]} (T={cal_05[1]:.2f}); "
+            f"matched {len(rows_cal)} moneyline rows"
+        )
 
     # ------------------------------------------------------------------
     # Moneyline +EV analysis — raw vs calibrated
@@ -680,8 +815,10 @@ def main() -> None:
     print("MONEYLINE +EV BACKTEST (real SBR odds, settled on game result)")
     print(f"{'=' * 60}")
 
-    for tag, rows in [("RAW (uncalibrated)", moneyline_rows_raw),
-                     ("CALIBRATED (Platt/temp)", moneyline_rows_cal)]:
+    for tag, rows in [
+        ("RAW (uncalibrated)", moneyline_rows_raw),
+        ("CALIBRATED (Platt/temp)", moneyline_rows_cal),
+    ]:
         print(f"\n  === {tag}  (n={len(rows)}) ===")
         _print_sim("Flat stake", rows, "flat")
         _print_sim("Full Kelly (cap 1 unit)", rows, "kelly")
@@ -690,12 +827,12 @@ def main() -> None:
         rows_sorted = sorted(rows, key=lambda r: r["model_prob"])
         n = len(rows_sorted)
         for lo in range(10):
-            bucket = rows_sorted[int(lo * n / 10): int((lo + 1) * n / 10)]
+            bucket = rows_sorted[int(lo * n / 10) : int((lo + 1) * n / 10)]
             if not bucket:
                 continue
             mp = np.mean([b["model_prob"] for b in bucket])
             wr = np.mean([1.0 if b["win"] else 0.0 for b in bucket])
-            print(f"      p~{mp:.2f}  win%={wr*100:5.1f}  n={len(bucket)}")
+            print(f"      p~{mp:.2f}  win%={wr * 100:5.1f}  n={len(bucket)}")
 
     # ------------------------------------------------------------------
     # Player-prop calibration — RAW plus per-season ISOTONIC recalibration.
@@ -715,8 +852,15 @@ def main() -> None:
 
     def _print_calib(label: str, preds: list[tuple[float, int]], tcol: str) -> None:
         gp = [
-            GamePrediction(date=None, player_id=0, game_pk=0,
-                           predicted_prob=float(p), actual=a, hits=a, target_col=tcol)
+            GamePrediction(
+                date=None,
+                player_id=0,
+                game_pk=0,
+                predicted_prob=float(p),
+                actual=a,
+                hits=a,
+                target_col=tcol,
+            )
             for p, a in preds
         ]
         ece = expected_calibration_error(gp, n_bins=10)
@@ -725,8 +869,10 @@ def main() -> None:
         print("      Bucket   Predicted  Observed   Count")
         print("      " + "-" * 42)
         for b in calibration_buckets(gp, n_bins=10):
-            print(f"      [{b['bin_lower']:.2f}-{b['bin_upper']:.2f})  "
-                  f"{b['mean_predicted']:.4f}     {b['observed_freq']:.4f}   {b['count']:>6d}")
+            print(
+                f"      [{b['bin_lower']:.2f}-{b['bin_upper']:.2f})  "
+                f"{b['mean_predicted']:.4f}     {b['observed_freq']:.4f}   {b['count']:>6d}"
+            )
 
     for label, tcol, raw_list, iso_list in [
         ("P(hits>=1) / target_0.5", "target_0.5", prop_preds_05_raw, prop_preds_05_iso),
@@ -738,15 +884,19 @@ def main() -> None:
     # Illustrative fair-line value at -110 (decimal 1.909, breakeven 0.524)
     breakeven = 1.0 / 1.909
     print(f"\n  Illustrative: at -110 (decimal 1.909) breakeven p = {breakeven:.3f}")
-    for label, raw_list, iso_list in [("0.5", prop_preds_05_raw, prop_preds_05_iso),
-                                      ("1.5", prop_preds_15_raw, prop_preds_15_iso)]:
+    for label, raw_list, iso_list in [
+        ("0.5", prop_preds_05_raw, prop_preds_05_iso),
+        ("1.5", prop_preds_15_raw, prop_preds_15_iso),
+    ]:
         for tag, preds in [("RAW", raw_list), ("ISOTONIC", iso_list)]:
             val = [(p, a) for p, a in preds if p > breakeven]
             if val:
                 realized = np.mean([a for _, a in val])
-                print(f"    target_{label} [{tag}]: model > breakeven in "
-                      f"{len(val)}/{len(preds)} ({len(val)/len(preds)*100:.1f}%); "
-                      f"realized={realized*100:.1f}% (need {breakeven*100:.1f}%)")
+                print(
+                    f"    target_{label} [{tag}]: model > breakeven in "
+                    f"{len(val)}/{len(preds)} ({len(val) / len(preds) * 100:.1f}%); "
+                    f"realized={realized * 100:.1f}% (need {breakeven * 100:.1f}%)"
+                )
             else:
                 print(f"    target_{label} [{tag}]: none above breakeven")
 

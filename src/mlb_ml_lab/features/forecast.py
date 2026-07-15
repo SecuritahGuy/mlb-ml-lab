@@ -113,16 +113,18 @@ class WeatherForecastFeatures(FeatureExtractor):
                     except Exception:  # pylint: disable=broad-exception-caught
                         pass
 
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "forecast_temp": (forecast or {}).get("temp"),
-                "forecast_wind_speed": (forecast or {}).get("wind_speed"),
-                "forecast_wind_direction": (forecast or {}).get("wind_direction"),
-                "forecast_precip_pct": (forecast or {}).get("precip_pct"),
-                "forecast_conditions": (forecast or {}).get("conditions"),
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "forecast_temp": (forecast or {}).get("temp"),
+                    "forecast_wind_speed": (forecast or {}).get("wind_speed"),
+                    "forecast_wind_direction": (forecast or {}).get("wind_direction"),
+                    "forecast_precip_pct": (forecast or {}).get("precip_pct"),
+                    "forecast_conditions": (forecast or {}).get("conditions"),
+                }
+            )
 
         return rows
 

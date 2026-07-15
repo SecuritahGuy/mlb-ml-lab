@@ -24,12 +24,10 @@ class FeatureExtractor(ABC):
 
     @property
     @abstractmethod
-    def features(self) -> list[FeatureMeta]:
-        ...
+    def features(self) -> list[FeatureMeta]: ...
 
     @abstractmethod
-    def extract(self, **kwargs: Any) -> list[dict[str, Any]]:
-        ...
+    def extract(self, **kwargs: Any) -> list[dict[str, Any]]: ...
 
 
 # ---------------------------------------------------------------------------

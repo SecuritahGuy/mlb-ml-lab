@@ -4,10 +4,19 @@ from mlb_ml_lab.features.matchup import TeamPitchingFeatures
 
 def _log(**kwargs) -> PlayerGameLog:
     defaults = {
-        "player_id": 1, "player_name": "A", "team_id": 108, "opponent_id": 145,
-        "date": "2025-04-01", "game_pk": 1000, "is_home": True, "is_win": True,
-        "game_type": "R", "season": "2025",
-        "hits": 0, "at_bats": 4, "plate_appearances": 4,
+        "player_id": 1,
+        "player_name": "A",
+        "team_id": 108,
+        "opponent_id": 145,
+        "date": "2025-04-01",
+        "game_pk": 1000,
+        "is_home": True,
+        "is_win": True,
+        "game_type": "R",
+        "season": "2025",
+        "hits": 0,
+        "at_bats": 4,
+        "plate_appearances": 4,
     }
     defaults.update(kwargs)
     return PlayerGameLog(**defaults)
@@ -35,7 +44,9 @@ class TestTeamPitchingFeatures:
             }
         }
         log = _log(team_id=108, opponent_id=145)
-        rows = TeamPitchingFeatures().extract(game_logs=[log], opponent_pitching=pitching)
+        rows = TeamPitchingFeatures().extract(
+            game_logs=[log], opponent_pitching=pitching
+        )
         r = rows[0]
         assert r["opp_era"] == 3.50
         assert r["opp_k_per_9"] == 9.2
@@ -49,19 +60,25 @@ class TestTeamPitchingFeatures:
             145: {"era": 4.50},
         }
         log = _log(team_id=108, opponent_id=145)
-        rows = TeamPitchingFeatures().extract(game_logs=[log], opponent_pitching=pitching)
+        rows = TeamPitchingFeatures().extract(
+            game_logs=[log], opponent_pitching=pitching
+        )
         assert rows[0]["opp_era"] == 4.50
 
     def test_team_not_in_dict_all_none(self):
         pitching = {999: {"era": 3.00}}
         log = _log(opponent_id=145)
-        rows = TeamPitchingFeatures().extract(game_logs=[log], opponent_pitching=pitching)
+        rows = TeamPitchingFeatures().extract(
+            game_logs=[log], opponent_pitching=pitching
+        )
         assert rows[0]["opp_era"] is None
 
     def test_partial_stat_dict(self):
         pitching = {145: {"era": 4.00}}
         log = _log(opponent_id=145)
-        rows = TeamPitchingFeatures().extract(game_logs=[log], opponent_pitching=pitching)
+        rows = TeamPitchingFeatures().extract(
+            game_logs=[log], opponent_pitching=pitching
+        )
         r = rows[0]
         assert r["opp_era"] == 4.00
         assert r["opp_k_per_9"] is None
@@ -76,7 +93,9 @@ class TestTeamPitchingFeatures:
             _log(game_pk=1, team_id=108, opponent_id=145),
             _log(game_pk=2, team_id=145, opponent_id=108),
         ]
-        rows = TeamPitchingFeatures().extract(game_logs=logs, opponent_pitching=pitching)
+        rows = TeamPitchingFeatures().extract(
+            game_logs=logs, opponent_pitching=pitching
+        )
         assert rows[0]["opp_era"] == 3.00
         assert rows[1]["opp_era"] == 4.20
 

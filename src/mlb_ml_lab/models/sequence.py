@@ -20,8 +20,15 @@ from mlx.utils import tree_flatten, tree_unflatten
 SEQUENCE_LEN = 15
 
 STAT_FEATURES = [
-    "at_bats", "hits", "walks", "strikeouts",
-    "doubles", "triples", "home_runs", "runs", "rbi",
+    "at_bats",
+    "hits",
+    "walks",
+    "strikeouts",
+    "doubles",
+    "triples",
+    "home_runs",
+    "runs",
+    "rbi",
 ]
 
 N_STATS = len(STAT_FEATURES) + 1  # stats + is_home
@@ -81,7 +88,7 @@ def build_sequences(
     targets_out: list[int] = []
     masks: list[list[float]] = []
 
-    for (pid, season), entries in grouped.items():
+    for (_, _), entries in grouped.items():
         entries.sort(key=lambda e: e[1].date)
         indices = [e[0] for e in entries]
         vecs = [_feat_vec(e[1]) for e in entries]
@@ -151,7 +158,7 @@ class SequenceHitPredictor(nn.Module):
         self.head = nn.Linear(hidden_dim, 1)
 
     def __call__(self, x: mx.array) -> mx.array:
-        out = self.gru(x)          # [B, T, H]
+        out = self.gru(x)  # [B, T, H]
         last = out[:, -1, :]
         last = self.dropout(last)
         return self.head(last)
@@ -209,7 +216,9 @@ def train_sequence_model(
     )
 
     lr_schedule = optim.cosine_decay(
-        learning_rate, total_steps, end=learning_rate * 0.01,
+        learning_rate,
+        total_steps,
+        end=learning_rate * 0.01,
     )
     optimizer = optim.Adam(learning_rate=lr_schedule)
 
@@ -248,10 +257,9 @@ def train_sequence_model(
             y_batch = mx.array(y_shuf[start:end, np.newaxis])
 
             loss, grads = loss_and_grad_fn(x_batch, y_batch)
-            grads = tree_unflatten([
-                (k, mx.clip(v, -5.0, 5.0))
-                for k, v in tree_flatten(grads)
-            ])
+            grads = tree_unflatten(
+                [(k, mx.clip(v, -5.0, 5.0)) for k, v in tree_flatten(grads)]
+            )
             optimizer.update(model, grads)
             mx.eval(model.parameters(), optimizer.state)
 
@@ -337,8 +345,12 @@ def save_hybrid_model(
     weights = _flatten_params(model.parameters())
     mx.save_safetensors(os.path.join(directory, "model.safetensors"), weights)
 
-    for name, arr in [("stats_mean", stats_mean), ("stats_std", stats_std),
-                       ("feat_mean", feat_mean), ("feat_std", feat_std)]:
+    for name, arr in [
+        ("stats_mean", stats_mean),
+        ("stats_std", stats_std),
+        ("feat_mean", feat_mean),
+        ("feat_std", feat_std),
+    ]:
         if arr is not None:
             np.save(os.path.join(directory, f"{name}.npy"), arr)
 
@@ -350,7 +362,7 @@ def save_hybrid_model(
     }
     if metadata:
         config.update(metadata)
-    with open(os.path.join(directory, "config.json"), "w") as f:
+    with open(os.path.join(directory, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
 
     return directory
@@ -358,13 +370,15 @@ def save_hybrid_model(
 
 def load_hybrid_model(
     directory: str,
-) -> tuple[HybridHitPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+) -> tuple[
+    HybridHitPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]
+]:
     """Load a model saved by ``save_hybrid_model``.
 
     Returns:
         ``(model, stats_mean, stats_std, feat_mean, feat_std, config)``.
     """
-    with open(os.path.join(directory, "config.json")) as f:
+    with open(os.path.join(directory, "config.json"), encoding="utf-8") as f:
         config = json.load(f)
 
     model = HybridHitPredictor(
@@ -387,13 +401,15 @@ def load_hybrid_model(
     return model, stats_mean, stats_std, feat_mean, feat_std, config
 
 
-def load_sequence_model(directory: str) -> tuple[SequenceHitPredictor, np.ndarray, np.ndarray, dict[str, Any]]:
+def load_sequence_model(
+    directory: str,
+) -> tuple[SequenceHitPredictor, np.ndarray, np.ndarray, dict[str, Any]]:
     """Load a model saved by ``save_sequence_model``.
 
     Returns:
         ``(model, stats_mean, stats_std, config)``.
     """
-    with open(os.path.join(directory, "config.json")) as f:
+    with open(os.path.join(directory, "config.json"), encoding="utf-8") as f:
         config = json.load(f)
 
     n_layers = config.get("n_layers", 2)
@@ -504,7 +520,9 @@ def build_hybrid_sequences(
     grouped: dict[tuple[int, str], list[tuple[int, Any]]] = defaultdict(list)
     for i, log in enumerate(game_logs):
         pid = log.player_id if hasattr(log, "player_id") else log["player_id"]
-        season = str(log.season) if hasattr(log, "season") else str(log.get("season", ""))
+        season = (
+            str(log.season) if hasattr(log, "season") else str(log.get("season", ""))
+        )
         grouped[(pid, season)].append((i, log))
 
     seq_list: list[np.ndarray] = []
@@ -525,11 +543,10 @@ def build_hybrid_sequences(
     for fr in feature_matrix[:100]:
         if _sample_cols is None:
             _sample_cols = set(fr.keys()) - _excluded
-        _sample_cols = {k for k in _sample_cols
-                        if k in fr and _ctx_is_numeric(fr, k)}
+        _sample_cols = {k for k in _sample_cols if k in fr and _ctx_is_numeric(fr, k)}
     ctx_cols = sorted(_sample_cols) if _sample_cols else []
 
-    for (pid, season), entries in grouped.items():
+    for (_, _), entries in grouped.items():
         entries.sort(key=lambda e: e[1].date if hasattr(e[1], "date") else e[1]["date"])
         indices = [e[0] for e in entries]
         vecs = [_feat_vec(e[1]) for e in entries]
@@ -548,7 +565,7 @@ def build_hybrid_sequences(
             if target_row is None:
                 continue
 
-            seq = vecs[pos - seq_len: pos]
+            seq = vecs[pos - seq_len : pos]
             seq_list.append(np.array(seq, dtype=np.float32))
 
             ctx_vec = np.array([feat_row[c] or 0.0 for c in ctx_cols], dtype=np.float32)
@@ -613,7 +630,9 @@ def train_hybrid_model(
     )
 
     lr_schedule = optim.cosine_decay(
-        learning_rate, total_steps, end=learning_rate * 0.01,
+        learning_rate,
+        total_steps,
+        end=learning_rate * 0.01,
     )
     optimizer = optim.Adam(learning_rate=lr_schedule)
 
@@ -653,10 +672,9 @@ def train_hybrid_model(
             y_batch = mx.array(y_shuf[start:end, np.newaxis])
 
             loss, grads = loss_and_grad_fn(xs_batch, xc_batch, y_batch)
-            grads = tree_unflatten([
-                (k, mx.clip(v, -5.0, 5.0))
-                for k, v in tree_flatten(grads)
-            ])
+            grads = tree_unflatten(
+                [(k, mx.clip(v, -5.0, 5.0)) for k, v in tree_flatten(grads)]
+            )
             optimizer.update(model, grads)
             mx.eval(model.parameters(), optimizer.state)
 
@@ -760,9 +778,7 @@ class MultiTaskHybridPredictor(nn.Module):
         self.head_05 = nn.Linear(hidden_dim * 2, 1)
         self.head_15 = nn.Linear(hidden_dim * 2, 1)
 
-    def __call__(
-        self, seq: mx.array, ctx: mx.array
-    ) -> tuple[mx.array, mx.array]:
+    def __call__(self, seq: mx.array, ctx: mx.array) -> tuple[mx.array, mx.array]:
         out = self.gru(seq)
         last = out[:, -1, :]
         last = self.dropout(last)
@@ -780,7 +796,16 @@ def build_hybrid_mt_sequences(
     stats_std: np.ndarray | None = None,
     feat_mean: np.ndarray | None = None,
     feat_std: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
     """Build sequences + context features for multi-task learning.
 
     Returns:
@@ -798,7 +823,9 @@ def build_hybrid_mt_sequences(
     grouped: dict[tuple[int, str], list[tuple[int, Any]]] = defaultdict(list)
     for i, log in enumerate(game_logs):
         pid = log.player_id if hasattr(log, "player_id") else log["player_id"]
-        season = str(log.season) if hasattr(log, "season") else str(log.get("season", ""))
+        season = (
+            str(log.season) if hasattr(log, "season") else str(log.get("season", ""))
+        )
         grouped[(pid, season)].append((i, log))
 
     seq_list: list[np.ndarray] = []
@@ -821,7 +848,7 @@ def build_hybrid_mt_sequences(
         _sample_cols = {k for k in _sample_cols if k in fr and _ctx_is_numeric(fr, k)}
     ctx_cols = sorted(_sample_cols) if _sample_cols else []
 
-    for (pid, season), entries in grouped.items():
+    for (_, _), entries in grouped.items():
         entries.sort(key=lambda e: e[1].date if hasattr(e[1], "date") else e[1]["date"])
         indices = [e[0] for e in entries]
         vecs = [_feat_vec(e[1]) for e in entries]
@@ -840,7 +867,7 @@ def build_hybrid_mt_sequences(
             if target_row is None:
                 continue
 
-            seq = vecs[pos - seq_len: pos]
+            seq = vecs[pos - seq_len : pos]
             seq_list.append(np.array(seq, dtype=np.float32))
             ctx_vec = np.array([feat_row[c] or 0.0 for c in ctx_cols], dtype=np.float32)
             ctx_list.append(ctx_vec)
@@ -904,7 +931,9 @@ def train_multi_task_model(
     )
 
     lr_schedule = optim.cosine_decay(
-        learning_rate, total_steps, end=learning_rate * 0.01,
+        learning_rate,
+        total_steps,
+        end=learning_rate * 0.01,
     )
     optimizer = optim.Adam(learning_rate=lr_schedule)
 
@@ -918,7 +947,10 @@ def train_multi_task_model(
     pw_15 = n_neg_15 / n_pos_15 if n_pos_15 > 0 else 1.0
 
     def loss_fn(
-        xs: mx.array, xc: mx.array, y05: mx.array, y15: mx.array,
+        xs: mx.array,
+        xc: mx.array,
+        y05: mx.array,
+        y15: mx.array,
     ) -> mx.array:
         logits_05, logits_15 = model(xs, xc)
         loss_05 = nn.losses.binary_cross_entropy(logits_05, y05)
@@ -954,10 +986,9 @@ def train_multi_task_model(
             y15_batch = mx.array(y15_shuf[start:end, np.newaxis])
 
             loss, grads = loss_and_grad_fn(xs_batch, xc_batch, y05_batch, y15_batch)
-            grads = tree_unflatten([
-                (k, mx.clip(v, -5.0, 5.0))
-                for k, v in tree_flatten(grads)
-            ])
+            grads = tree_unflatten(
+                [(k, mx.clip(v, -5.0, 5.0)) for k, v in tree_flatten(grads)]
+            )
             optimizer.update(model, grads)
             mx.eval(model.parameters(), optimizer.state)
 
@@ -1032,8 +1063,12 @@ def save_multi_task_model(
     os.makedirs(directory, exist_ok=True)
     weights = _flatten_params(model.parameters())
     mx.save_safetensors(os.path.join(directory, "model.safetensors"), weights)
-    for name, arr in [("stats_mean", stats_mean), ("stats_std", stats_std),
-                       ("feat_mean", feat_mean), ("feat_std", feat_std)]:
+    for name, arr in [
+        ("stats_mean", stats_mean),
+        ("stats_std", stats_std),
+        ("feat_mean", feat_mean),
+        ("feat_std", feat_std),
+    ]:
         if arr is not None:
             np.save(os.path.join(directory, f"{name}.npy"), arr)
     config = {
@@ -1044,16 +1079,23 @@ def save_multi_task_model(
     }
     if metadata:
         config.update(metadata)
-    with open(os.path.join(directory, "config.json"), "w") as f:
+    with open(os.path.join(directory, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
     return directory
 
 
 def load_multi_task_model(
     directory: str,
-) -> tuple[MultiTaskHybridPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+) -> tuple[
+    MultiTaskHybridPredictor,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict[str, Any],
+]:
     """Load a multi-task model saved by ``save_multi_task_model``."""
-    with open(os.path.join(directory, "config.json")) as f:
+    with open(os.path.join(directory, "config.json"), encoding="utf-8") as f:
         config = json.load(f)
 
     model = MultiTaskHybridPredictor(
@@ -1141,7 +1183,9 @@ class DCNMultiTaskPredictor(nn.Module):
         self.head_15 = nn.Linear(hidden_dim + cross_dim, 1)
 
     def __call__(
-        self, seq: mx.array, ctx: mx.array,
+        self,
+        seq: mx.array,
+        ctx: mx.array,
     ) -> tuple[mx.array, mx.array]:
         out = self.gru(seq)
         last = out[:, -1, :]
@@ -1188,7 +1232,9 @@ def train_dcn_multi_task_model(
     )
 
     lr_schedule = optim.cosine_decay(
-        learning_rate, total_steps, end=learning_rate * 0.01,
+        learning_rate,
+        total_steps,
+        end=learning_rate * 0.01,
     )
     optimizer = optim.Adam(learning_rate=lr_schedule)
 
@@ -1201,7 +1247,10 @@ def train_dcn_multi_task_model(
     pw_15 = n_neg_15 / n_pos_15 if n_pos_15 > 0 else 1.0
 
     def loss_fn(
-        xs: mx.array, xc: mx.array, y05: mx.array, y15: mx.array,
+        xs: mx.array,
+        xc: mx.array,
+        y05: mx.array,
+        y15: mx.array,
     ) -> mx.array:
         logits_05, logits_15 = model(xs, xc)
         loss_05 = nn.losses.binary_cross_entropy(logits_05, y05)
@@ -1237,10 +1286,9 @@ def train_dcn_multi_task_model(
             y15_batch = mx.array(y15_shuf[start:end, np.newaxis])
 
             loss, grads = loss_and_grad_fn(xs_batch, xc_batch, y05_batch, y15_batch)
-            grads = tree_unflatten([
-                (k, mx.clip(v, -5.0, 5.0))
-                for k, v in tree_flatten(grads)
-            ])
+            grads = tree_unflatten(
+                [(k, mx.clip(v, -5.0, 5.0)) for k, v in tree_flatten(grads)]
+            )
             optimizer.update(model, grads)
             mx.eval(model.parameters(), optimizer.state)
 
@@ -1316,8 +1364,12 @@ def save_dcn_model(
     os.makedirs(directory, exist_ok=True)
     weights = _flatten_params(model.parameters())
     mx.save_safetensors(os.path.join(directory, "model.safetensors"), weights)
-    for name, arr in [("stats_mean", stats_mean), ("stats_std", stats_std),
-                       ("feat_mean", feat_mean), ("feat_std", feat_std)]:
+    for name, arr in [
+        ("stats_mean", stats_mean),
+        ("stats_std", stats_std),
+        ("feat_mean", feat_mean),
+        ("feat_std", feat_std),
+    ]:
         if arr is not None:
             np.save(os.path.join(directory, f"{name}.npy"), arr)
     config = {
@@ -1328,16 +1380,23 @@ def save_dcn_model(
     }
     if metadata:
         config.update(metadata)
-    with open(os.path.join(directory, "config.json"), "w") as f:
+    with open(os.path.join(directory, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
     return directory
 
 
 def load_dcn_model(
     directory: str,
-) -> tuple[DCNMultiTaskPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+) -> tuple[
+    DCNMultiTaskPredictor,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict[str, Any],
+]:
     """Load a DCN multi-task model saved by ``save_dcn_model``."""
-    with open(os.path.join(directory, "config.json")) as f:
+    with open(os.path.join(directory, "config.json"), encoding="utf-8") as f:
         config = json.load(f)
 
     model = DCNMultiTaskPredictor(
@@ -1406,11 +1465,15 @@ class TransformerEncoder(nn.Module):
         for i in range(num_layers):
             setattr(self, f"attn_{i}", nn.MultiHeadAttention(d_model, nhead))
             setattr(self, f"norm1_{i}", nn.LayerNorm(d_model))
-            setattr(self, f"ffn_{i}", nn.Sequential(
-                nn.Linear(d_model, d_model * 2),
-                nn.ReLU(),
-                nn.Linear(d_model * 2, d_model),
-            ))
+            setattr(
+                self,
+                f"ffn_{i}",
+                nn.Sequential(
+                    nn.Linear(d_model, d_model * 2),
+                    nn.ReLU(),
+                    nn.Linear(d_model * 2, d_model),
+                ),
+            )
             setattr(self, f"norm2_{i}", nn.LayerNorm(d_model))
 
     def __call__(self, x: mx.array) -> mx.array:
@@ -1457,8 +1520,11 @@ class TransformerMultiTaskPredictor(nn.Module):
     ):
         super().__init__()
         self.transformer = TransformerEncoder(
-            n_stats=n_stats, d_model=d_model,
-            nhead=nhead, num_layers=num_layers, dropout=dropout,
+            n_stats=n_stats,
+            d_model=d_model,
+            nhead=nhead,
+            num_layers=num_layers,
+            dropout=dropout,
         )
         self.context_net = nn.Sequential(
             nn.Linear(n_context, d_model),
@@ -1469,7 +1535,9 @@ class TransformerMultiTaskPredictor(nn.Module):
         self.head_15 = nn.Linear(d_model * 2, 1)
 
     def __call__(
-        self, seq: mx.array, ctx: mx.array,
+        self,
+        seq: mx.array,
+        ctx: mx.array,
     ) -> tuple[mx.array, mx.array]:
         seq_emb = self.transformer(seq)
         ctx_emb = self.context_net(ctx)
@@ -1513,7 +1581,9 @@ def train_transformer_multi_task_model(
     )
 
     lr_schedule = optim.cosine_decay(
-        learning_rate, total_steps, end=learning_rate * 0.01,
+        learning_rate,
+        total_steps,
+        end=learning_rate * 0.01,
     )
     optimizer = optim.Adam(learning_rate=lr_schedule)
 
@@ -1525,7 +1595,10 @@ def train_transformer_multi_task_model(
     pw_15 = n_neg_15 / n_pos_15 if n_pos_15 > 0 else 1.0
 
     def loss_fn(
-        xs: mx.array, xc: mx.array, y05: mx.array, y15: mx.array,
+        xs: mx.array,
+        xc: mx.array,
+        y05: mx.array,
+        y15: mx.array,
     ) -> mx.array:
         logits_05, logits_15 = model(xs, xc)
         loss_05 = nn.losses.binary_cross_entropy(logits_05, y05)
@@ -1561,10 +1634,9 @@ def train_transformer_multi_task_model(
             y15_batch = mx.array(y15_shuf[start:end, np.newaxis])
 
             loss, grads = loss_and_grad_fn(xs_batch, xc_batch, y05_batch, y15_batch)
-            grads = tree_unflatten([
-                (k, mx.clip(v, -5.0, 5.0))
-                for k, v in tree_flatten(grads)
-            ])
+            grads = tree_unflatten(
+                [(k, mx.clip(v, -5.0, 5.0)) for k, v in tree_flatten(grads)]
+            )
             optimizer.update(model, grads)
             mx.eval(model.parameters(), optimizer.state)
 
@@ -1639,8 +1711,12 @@ def save_transformer_model(
     os.makedirs(directory, exist_ok=True)
     weights = _flatten_params(model.parameters())
     mx.save_safetensors(os.path.join(directory, "model.safetensors"), weights)
-    for name, arr in [("stats_mean", stats_mean), ("stats_std", stats_std),
-                       ("feat_mean", feat_mean), ("feat_std", feat_std)]:
+    for name, arr in [
+        ("stats_mean", stats_mean),
+        ("stats_std", stats_std),
+        ("feat_mean", feat_mean),
+        ("feat_std", feat_std),
+    ]:
         if arr is not None:
             np.save(os.path.join(directory, f"{name}.npy"), arr)
     config = {
@@ -1651,16 +1727,23 @@ def save_transformer_model(
     }
     if metadata:
         config.update(metadata)
-    with open(os.path.join(directory, "config.json"), "w") as f:
+    with open(os.path.join(directory, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
     return directory
 
 
 def load_transformer_model(
     directory: str,
-) -> tuple[TransformerMultiTaskPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+) -> tuple[
+    TransformerMultiTaskPredictor,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict[str, Any],
+]:
     """Load a transformer multi-task model saved by ``save_transformer_model``."""
-    with open(os.path.join(directory, "config.json")) as f:
+    with open(os.path.join(directory, "config.json"), encoding="utf-8") as f:
         config = json.load(f)
 
     model = TransformerMultiTaskPredictor(

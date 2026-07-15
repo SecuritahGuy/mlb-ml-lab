@@ -71,7 +71,10 @@ class TestWeatherForecastFeatures:
         }
         teams = [{"id": 108, "venue": {"id": 19}}, {"id": 145, "venue": {"id": 680}}]
         rows = extractor.extract(
-            game_logs=logs, teams=teams, game_contexts=contexts, nws=nws,
+            game_logs=logs,
+            teams=teams,
+            game_contexts=contexts,
+            nws=nws,
         )
         assert len(rows) == 1
         r = rows[0]
@@ -118,7 +121,10 @@ class TestWeatherForecastFeatures:
         }
         teams = [{"id": 141, "venue": {"id": 14}}, {"id": 145, "venue": {"id": 680}}]
         rows = extractor.extract(
-            game_logs=logs, teams=teams, game_contexts=contexts, nws=nws,
+            game_logs=logs,
+            teams=teams,
+            game_contexts=contexts,
+            nws=nws,
         )
         r = rows[0]
         assert r["forecast_conditions"] == "Indoor"
@@ -131,7 +137,9 @@ class TestWeatherForecastFeatures:
         extractor = WeatherForecastFeatures()
         logs = [_log()]
         rows = extractor.extract(
-            game_logs=logs, teams=[{"id": 108, "venue": {"id": 19}}], nws=nws,
+            game_logs=logs,
+            teams=[{"id": 108, "venue": {"id": 19}}],
+            nws=nws,
         )
         r = rows[0]
         assert r["forecast_temp"] is None
@@ -147,7 +155,10 @@ class TestWeatherForecastFeatures:
         contexts = {1000: {"weather_condition": "Clear"}}
         teams = [{"id": 108, "venue": {"id": 19}}]
         rows = extractor.extract(
-            game_logs=logs, teams=teams, game_contexts=contexts, nws=nws,
+            game_logs=logs,
+            teams=teams,
+            game_contexts=contexts,
+            nws=nws,
         )
         r = rows[0]
         assert r["forecast_temp"] is None
@@ -170,7 +181,10 @@ class TestWeatherForecastFeatures:
         contexts = {1000: {"game_datetime": "2025-04-01T18:10:00Z"}}
         teams = [{"id": 999, "venue": None}, {"id": 145, "venue": {"id": 680}}]
         rows = extractor.extract(
-            game_logs=logs, teams=teams, game_contexts=contexts, nws=nws,
+            game_logs=logs,
+            teams=teams,
+            game_contexts=contexts,
+            nws=nws,
         )
         r = rows[0]
         assert r["forecast_temp"] is None
@@ -183,7 +197,10 @@ class TestWeatherForecastFeatures:
         contexts = {1000: {"game_datetime": "not-a-datetime"}}
         teams = [{"id": 108, "venue": {"id": 19}}]
         rows = extractor.extract(
-            game_logs=logs, teams=teams, game_contexts=contexts, nws=nws,
+            game_logs=logs,
+            teams=teams,
+            game_contexts=contexts,
+            nws=nws,
         )
         r = rows[0]
         assert r["forecast_temp"] is None
@@ -200,7 +217,10 @@ class TestWeatherForecastFeatures:
         }
         teams = [{"id": 108, "venue": {"id": 19}}, {"id": 145, "venue": {"id": 680}}]
         rows = extractor.extract(
-            game_logs=logs, teams=teams, game_contexts=contexts, nws=nws,
+            game_logs=logs,
+            teams=teams,
+            game_contexts=contexts,
+            nws=nws,
         )
         for r in rows:
             assert r["forecast_temp"] is None
@@ -218,7 +238,10 @@ class TestWeatherForecastFeatures:
         }
         teams = [{"id": 108, "venue": {"id": 19}}, {"id": 145, "venue": {"id": 680}}]
         rows = extractor.extract(
-            game_logs=logs, teams=teams, game_contexts=contexts, nws=nws,
+            game_logs=logs,
+            teams=teams,
+            game_contexts=contexts,
+            nws=nws,
         )
         assert len(rows) == 2
         assert rows[0]["player_id"] == 1
@@ -239,7 +262,10 @@ class TestWeatherForecastFeatures:
         }
         teams = [{"id": 108, "venue": {"id": 19}}, {"id": 145, "venue": {"id": 680}}]
         rows = extractor.extract(
-            game_logs=logs, teams=teams, game_contexts=contexts, nws=nws,
+            game_logs=logs,
+            teams=teams,
+            game_contexts=contexts,
+            nws=nws,
         )
         assert len(rows) == 3
         assert rows[0]["forecast_temp"] == 72

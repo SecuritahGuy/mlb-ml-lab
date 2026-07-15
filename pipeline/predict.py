@@ -26,7 +26,11 @@ PREDICT_SEASON = 2026
 
 
 def main() -> None:
-    model_dir = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else MODEL_DIR
+    model_dir = (
+        sys.argv[1]
+        if len(sys.argv) > 1 and not sys.argv[1].startswith("--")
+        else MODEL_DIR
+    )
     predict_season = PREDICT_SEASON
 
     for arg in sys.argv[1:]:
@@ -69,8 +73,10 @@ def main() -> None:
         except Exception:  # pylint: disable=broad-exception-caught
             pass
         if (i + 1) % 100 == 0:
-            print(f"    ... {i+1}/{len(all_player_ids_list)} players "
-                  f"({len(all_game_logs)} game logs)")
+            print(
+                f"    ... {i + 1}/{len(all_player_ids_list)} players "
+                f"({len(all_game_logs)} game logs)"
+            )
 
     print(f"  {len(all_game_logs)} game log rows")
 
@@ -147,7 +153,8 @@ def main() -> None:
     for tid in opp_ids:
         try:
             leaders = client.get_team_leaders(
-                tid, predict_season,
+                tid,
+                predict_season,
                 leader_categories=["battingAverage", "homeRuns", "runsBattedIn"],
                 limit=1,
             )
@@ -205,14 +212,13 @@ def main() -> None:
     print("\nPredicting...")
     missing_cols = [c for c in feature_cols if c not in feature_matrix[0]]
     if missing_cols:
-        print(f"  Warning: {len(missing_cols)} feature columns missing in "
-              f"prediction data (will be imputed as 0)")
+        print(
+            f"  Warning: {len(missing_cols)} feature columns missing in "
+            f"prediction data (will be imputed as 0)"
+        )
 
     x = np.array(
-        [
-            [row.get(c, 0.0) or 0.0 for c in feature_cols]
-            for row in feature_matrix
-        ],
+        [[row.get(c, 0.0) or 0.0 for c in feature_cols] for row in feature_matrix],
         dtype=np.float64,
     )
     x = imputer.transform(x)
@@ -229,13 +235,15 @@ def main() -> None:
 
     predictions: list[dict[str, Any]] = []
     for row, proba, pred in zip(feature_matrix, y_proba.tolist(), y_pred.tolist()):
-        predictions.append({
-            "player_id": row["player_id"],
-            "game_pk": row["game_pk"],
-            "date": row["date"],
-            proba_key: round(proba, 4),
-            pred_key: pred,
-        })
+        predictions.append(
+            {
+                "player_id": row["player_id"],
+                "game_pk": row["game_pk"],
+                "date": row["date"],
+                proba_key: round(proba, 4),
+                pred_key: pred,
+            }
+        )
 
     out_path = os.path.join(output_dir, "predictions.jsonl")
     with open(out_path, "w", encoding="utf-8") as f:
@@ -244,8 +252,10 @@ def main() -> None:
 
     pos_rate = sum(p[pred_key] for p in predictions)
     print(f"\n  {len(predictions)} predictions written to {out_path}")
-    print(f"  Positive prediction rate: {pos_rate}/{len(predictions)} "
-          f"({pos_rate/len(predictions)*100:.1f}%)")
+    print(
+        f"  Positive prediction rate: {pos_rate}/{len(predictions)} "
+        f"({pos_rate / len(predictions) * 100:.1f}%)"
+    )
 
     # Also save as feature data for reuse
     save_feature_data(

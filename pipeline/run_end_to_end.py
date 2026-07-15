@@ -46,9 +46,7 @@ def fetch_roster_players(client: MlbClient) -> list[dict[str, Any]]:
     return players
 
 
-def fetch_game_logs(
-    client: MlbClient, player_ids: list[int]
-) -> list[PlayerGameLog]:
+def fetch_game_logs(client: MlbClient, player_ids: list[int]) -> list[PlayerGameLog]:
     all_logs: list[PlayerGameLog] = []
     for pid in player_ids:
         raw = client.get_player_game_log(pid, season=SEASON)
@@ -225,8 +223,15 @@ def fetch_pitcher_career_stats(
                 continue
             if not stats:
                 continue
-            for key in ("era", "strikeoutsPer9Inn", "whip", "avg", "homeRunsPer9",
-                        "battersFaced", "inningsPitched"):
+            for key in (
+                "era",
+                "strikeoutsPer9Inn",
+                "whip",
+                "avg",
+                "homeRunsPer9",
+                "battersFaced",
+                "inningsPitched",
+            ):
                 raw = stats.get(key)
                 if raw is not None:
                     try:
@@ -381,12 +386,16 @@ def main() -> None:
             print(f"    Avg AUC:      {mdata['avg_auc']:.4f}")
             print(f"    Folds:        {mdata['n_folds']}")
             for fm in mdata["fold_metrics"]:
-                auc_s = f"{fm['auc']:.4f}" if not (
-                    fm.get("auc") is None or fm["auc"] != fm["auc"]
-                ) else "N/A"
-                print(f"      Fold {fm['fold']}: "
-                      f"acc={fm['accuracy']:.4f}  auc={auc_s}  "
-                      f"n_train={fm['n_train']}  n_test={fm['n_test']}")
+                auc_s = (
+                    f"{fm['auc']:.4f}"
+                    if not (fm.get("auc") is None or fm["auc"] != fm["auc"])
+                    else "N/A"
+                )
+                print(
+                    f"      Fold {fm['fold']}: "
+                    f"acc={fm['accuracy']:.4f}  auc={auc_s}  "
+                    f"n_train={fm['n_train']}  n_test={fm['n_test']}"
+                )
 
     print("\nDone.")
 

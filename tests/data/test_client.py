@@ -115,8 +115,7 @@ class TestMlbClientUnit:
 
     def test_get_player_season_stats(self, tmp_path):
         seeds = {
-            "/people/545361/stats?group=hitting&season=2025&stats=season":
-                "trout_gamelog_2025.json"
+            "/people/545361/stats?group=hitting&season=2025&stats=season": "trout_gamelog_2025.json"
         }
         client = self._cached_client(seeds, tmp_path)
         try:
@@ -132,8 +131,8 @@ class TestMlbClientUnit:
         # For this we need a proper season stats fixture.
         # Use the pitcher season stats as a proxy to test shape.
         seeds = {
-            "/people/605130/stats?group=pitching&season=2025&stats=season":
-                "kikuchi_pitching_season_2025.json"
+            "/people/605130/stats?group=pitching&season=2025&stats=season":  # pylint: disable=line-too-long
+            "kikuchi_pitching_season_2025.json"
         }
         client = self._cached_client(seeds, tmp_path)
         try:
@@ -157,11 +156,10 @@ class TestMlbClientUnit:
     # --- New: Team hitting stats ---
 
     def test_get_team_hitting_stats(self, tmp_path):
+        url = "/teams/{}/stats?group=hitting&season=2025&stats=season"
         seeds = {
-            "/teams/108/stats?group=hitting&season=2025&stats=season":
-                "angels_hitting_stats_2025.json",
-            "/teams/145/stats?group=hitting&season=2025&stats=season":
-                "angels_hitting_stats_2025.json",
+            url.format(108): "angels_hitting_stats_2025.json",
+            url.format(145): "angels_hitting_stats_2025.json",
         }
         client = self._cached_client(seeds, tmp_path)
         try:
@@ -178,9 +176,9 @@ class TestMlbClientUnit:
             client.close()
 
     def test_get_team_hitting_stats_unknown_returns_empty(self, tmp_path):
+        url = "/teams/{}/stats?group=hitting&season=2025&stats=season"
         seeds = {
-            "/teams/999/stats?group=hitting&season=2025&stats=season":
-                "angels_hitting_stats_2025.json"
+            url.format(999): "angels_hitting_stats_2025.json"
         }
         client = self._cached_client(seeds, tmp_path)
         try:
@@ -263,9 +261,9 @@ class TestMlbClientUnit:
         pass
 
     def test_get_pitching_game_log_parsed(self, tmp_path):
+        url = "/people/605130/stats?group=pitching&gameType=R&season=2025&stats=gameLog"
         seeds = {
-            "/people/605130/stats?group=pitching&gameType=R&season=2025&stats=gameLog":
-                "kikuchi_pitching_gamelog_2025.json"
+            url: "kikuchi_pitching_gamelog_2025.json"
         }
         client = self._cached_client(seeds, tmp_path)
         try:
@@ -303,7 +301,8 @@ class TestMlbClientLive:
         try:
             roster = client.get_roster(108, 2025)
             hitter = next(
-                p for p in roster
+                p
+                for p in roster
                 if p.get("position", {}).get("abbreviation") not in ("P",)
             )
             pid = hitter["person"]["id"]
@@ -319,7 +318,9 @@ class TestMlbClientLive:
         try:
             ctx = client.get_game_context(778554)
             assert ctx["venue_name"]
-            assert ctx["weather_condition"] is not None or ctx["weather_temp"] is not None
+            assert (
+                ctx["weather_condition"] is not None or ctx["weather_temp"] is not None
+            )
         finally:
             client.close()
 

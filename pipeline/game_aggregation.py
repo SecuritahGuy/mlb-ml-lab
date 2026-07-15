@@ -1,6 +1,6 @@
 """Aggregate player-level hit predictions to team-game level.
 
-Walk-forward ensemble → sum individual hit probabilities by team-game → 
+Walk-forward ensemble → sum individual hit probabilities by team-game →
 compare to actual team hit totals. Evaluates whether aggregating players
 captures game-level signal that individual props miss.
 
@@ -37,12 +37,18 @@ BREAKEVEN = abs(ODDS) / (abs(ODDS) + 100)
 DECIMAL_ODDS = 1 + 100 / abs(ODDS)
 
 _TUNED_XGB = {
-    "n_estimators": 500, "max_depth": 5, "learning_rate": 0.01,
-    "subsample": 0.8, "colsample_bytree": 1.0, "min_child_weight": 1,
+    "n_estimators": 500,
+    "max_depth": 5,
+    "learning_rate": 0.01,
+    "subsample": 0.8,
+    "colsample_bytree": 1.0,
+    "min_child_weight": 1,
 }
 
 
-def _merge_rows(feat_rows: list[dict], tgt_rows: list[dict], target_col: str) -> list[dict]:
+def _merge_rows(
+    feat_rows: list[dict], tgt_rows: list[dict], target_col: str
+) -> list[dict]:
     merged: list[dict] = []
     for fr, tr in zip(feat_rows, tgt_rows):
         row = dict(fr)
@@ -52,7 +58,9 @@ def _merge_rows(feat_rows: list[dict], tgt_rows: list[dict], target_col: str) ->
 
 
 def _extract_xgb(
-    merged_rows: list[dict], target_col: str, cols: list[str] | None = None,
+    merged_rows: list[dict],
+    target_col: str,
+    cols: list[str] | None = None,
     imputer: SimpleImputer | None = None,
 ) -> tuple[np.ndarray, np.ndarray, list[str], SimpleImputer]:
     if cols is None:
@@ -75,16 +83,23 @@ def _extract_xgb(
 def main() -> None:
     print(f"Loading data from {CACHED_DATASET}...")
     raw_logs = load_game_logs(CACHED_DATASET)
-    feature_matrix, targets_list, meta = load_feature_data(CACHED_DATASET)
-    print(f"  {len(raw_logs)} game logs, {len(feature_matrix)} feature rows, "
-          f"{len(targets_list)} targets")
+    feature_matrix, targets_list, _meta = load_feature_data(CACHED_DATASET)
+    print(
+        f"  {len(raw_logs)} game logs, {len(feature_matrix)} feature rows, "
+        f"{len(targets_list)} targets"
+    )
 
     game_logs: list[PlayerGameLog] = []
     for d in raw_logs:
-        game_logs.append(PlayerGameLog(**{
-            k: v for k, v in d.items()
-            if k in PlayerGameLog.__dataclass_fields__
-        }))
+        game_logs.append(
+            PlayerGameLog(
+                **{
+                    k: v
+                    for k, v in d.items()
+                    if k in PlayerGameLog.__dataclass_fields__
+                }
+            )
+        )
 
     targets: list[dict] = targets_list
     features: list[dict] = feature_matrix
@@ -120,26 +135,46 @@ def main() -> None:
         train_cutoff = TRAIN_SEASONS[fold_idx]
         test_season = TRAIN_SEASONS[fold_idx + 1]
 
-        train_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
-                      if int(t["date"][:4]) <= train_cutoff]
-        test_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
-                     if int(t["date"][:4]) == test_season]
+        train_logs = [
+            lg
+            for lg, t in zip(aligned_logs, aligned_tgts)
+            if int(t["date"][:4]) <= train_cutoff
+        ]
+        test_logs = [
+            lg
+            for lg, t in zip(aligned_logs, aligned_tgts)
+            if int(t["date"][:4]) == test_season
+        ]
         train_tgt = [t for t in aligned_tgts if int(t["date"][:4]) <= train_cutoff]
         test_tgt = [t for t in aligned_tgts if int(t["date"][:4]) == test_season]
-        train_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
-                      if int(t["date"][:4]) <= train_cutoff]
-        test_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
-                     if int(t["date"][:4]) == test_season]
+        train_feat = [
+            f
+            for f, t in zip(aligned_feats, aligned_tgts)
+            if int(t["date"][:4]) <= train_cutoff
+        ]
+        test_feat = [
+            f
+            for f, t in zip(aligned_feats, aligned_tgts)
+            if int(t["date"][:4]) == test_season
+        ]
 
         print(f"\n  Fold {fold_idx + 1}: train ≤{train_cutoff}, test={test_season}")
         print(f"    Train: {len(train_logs)} logs, Test: {len(test_logs)} logs")
 
         Xs_tr, Xc_tr, y_tr, sm, ss, fm, fs = build_hybrid_sequences(
-            train_logs, train_feat, train_tgt, target_col=target_col,
+            train_logs,
+            train_feat,
+            train_tgt,
+            target_col=target_col,
         )
-        Xs_te, Xc_te, y_te, _, _, _, _ = build_hybrid_sequences(
-            test_logs, test_feat, test_tgt,
-            stats_mean=sm, stats_std=ss, feat_mean=fm, feat_std=fs,
+        Xs_te, Xc_te, _y_te, _, _, _, _ = build_hybrid_sequences(
+            test_logs,
+            test_feat,
+            test_tgt,
+            stats_mean=sm,
+            stats_std=ss,
+            feat_mean=fm,
+            feat_std=fs,
             target_col=target_col,
         )
         if len(Xs_tr) == 0 or len(Xs_te) == 0:
@@ -150,10 +185,14 @@ def main() -> None:
         test_merged = _merge_rows(test_feat, test_tgt, target_col)
 
         x_train, y_tr_xgb, xgb_cols, xgb_imputer = _extract_xgb(
-            train_merged, target_col,
+            train_merged,
+            target_col,
         )
-        x_test, y_te_xgb, _, _ = _extract_xgb(
-            test_merged, target_col, cols=xgb_cols, imputer=xgb_imputer,
+        x_test, _y_te_xgb, _, _ = _extract_xgb(
+            test_merged,
+            target_col,
+            cols=xgb_cols,
+            imputer=xgb_imputer,
         )
 
         xgb_model = _build_model("xgb", SEED, params=_TUNED_XGB)
@@ -161,9 +200,15 @@ def main() -> None:
         xgb_te_proba = xgb_model.predict_proba(x_test)[:, 1]
 
         hybrid_model, _ = train_hybrid_model(
-            Xs_tr, Xc_tr, y_tr,
-            hidden_dim=64, n_layers=2, dropout=0.2,
-            learning_rate=1e-3, epochs=60, batch_size=512,
+            Xs_tr,
+            Xc_tr,
+            y_tr,
+            hidden_dim=64,
+            n_layers=2,
+            dropout=0.2,
+            learning_rate=1e-3,
+            epochs=60,
+            batch_size=512,
             verbose=False,
         )
         hybrid_te_proba = predict_hybrid_model(hybrid_model, Xs_te, Xc_te)
@@ -181,7 +226,7 @@ def main() -> None:
         for i, lg in enumerate(test_logs):
             _grouped[(lg.player_id, str(lg.season))].append((i, lg))
 
-        for (pid, season), entries in _grouped.items():
+        for (pid, _season), entries in _grouped.items():
             entries.sort(key=lambda e: e[1].date)
             indices = [e[0] for e in entries]
             vecs = [_feat_vec(e[1]) for e in entries]
@@ -210,11 +255,13 @@ def main() -> None:
                             "players": [],
                             "actual_team_hits": 0,
                         }
-                    team_game_predictions[key]["players"].append({
-                        "player_id": pid,
-                        "prob": ensemble_prob,
-                        "actual_hits": lg.hits,
-                    })
+                    team_game_predictions[key]["players"].append(
+                        {
+                            "player_id": pid,
+                            "prob": ensemble_prob,
+                            "actual_hits": lg.hits,
+                        }
+                    )
                     team_game_predictions[key]["actual_team_hits"] += lg.hits
                     break
 
@@ -251,8 +298,10 @@ def main() -> None:
 
     print(f"\n  Total expected hits: {total_expected:.0f}")
     print(f"  Total actual hits:   {total_actual}")
-    print(f"  Bias: {total_expected - total_actual:.1f} hits "
-          f"({((total_expected - total_actual) / total_actual) * 100:+.2f}%)")
+    print(
+        f"  Bias: {total_expected - total_actual:.1f} hits "
+        f"({((total_expected - total_actual) / total_actual) * 100:+.2f}%)"
+    )
     print(f"  MAE: {mae:.2f} hits/team-game")
     print(f"  RMSE: {rmse:.2f} hits/team-game")
     print(f"  Correlation: {corr:.4f}")
@@ -267,10 +316,12 @@ def main() -> None:
             continue
         e, a = expected_total[mask], actual_total[mask]
         bias = (e.sum() - a.sum()) / a.sum() * 100
-        print(f"    {lo}-{hi} players ({mask.sum():>5} games): "
-              f"MAE={np.abs(a - e).mean():.2f}  "
-              f"bias={bias:+.2f}%  "
-              f"corr={np.corrcoef(e, a)[0, 1]:.4f}")
+        print(
+            f"    {lo}-{hi} players ({mask.sum():>5} games): "
+            f"MAE={np.abs(a - e).mean():.2f}  "
+            f"bias={bias:+.2f}%  "
+            f"corr={np.corrcoef(e, a)[0, 1]:.4f}"
+        )
 
     # ── Team-level betting simulation ────────────────────────────
     print("\n  --- Flat-stake betting on team total hits ---")
@@ -291,8 +342,10 @@ def main() -> None:
         win_rate = wins / bets
         net_pnl = wins * (DECIMAL_ODDS - 1) - (bets - wins)
         roi = net_pnl / bets * 100
-        print(f"  Over {thresh:>4.1f}  {bets:>6}  {win_rate:>8.4f}  "
-              f"{net_pnl:>8.2f}  {roi:>7.2f}%")
+        print(
+            f"  Over {thresh:>4.1f}  {bets:>6}  {win_rate:>8.4f}  "
+            f"{net_pnl:>8.2f}  {roi:>7.2f}%"
+        )
 
     # Strategy: Under X team hits when predicted total < threshold
     print()
@@ -309,8 +362,10 @@ def main() -> None:
         win_rate = wins / bets
         net_pnl = wins * (DECIMAL_ODDS - 1) - (bets - wins)
         roi = net_pnl / bets * 100
-        print(f"  Under {thresh:>4.1f}  {bets:>6}  {win_rate:>8.4f}  "
-              f"{net_pnl:>8.2f}  {roi:>7.2f}%")
+        print(
+            f"  Under {thresh:>4.1f}  {bets:>6}  {win_rate:>8.4f}  "
+            f"{net_pnl:>8.2f}  {roi:>7.2f}%"
+        )
 
     print("\nDone.")
 

@@ -116,9 +116,7 @@ class ParkFactors:
     # Internal
     # ------------------------------------------------------------------
 
-    def _for_season(
-        self, season: int | None
-    ) -> dict[int, dict[str, float]]:
+    def _for_season(self, season: int | None) -> dict[int, dict[str, float]]:
         season = season or 2025
         if season in self._cache:
             return self._cache[season]

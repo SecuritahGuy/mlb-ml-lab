@@ -182,7 +182,9 @@ class NwsWeather:
         with self._limiter:
             resp = self._client.get(url, headers=_user_agent())
         if resp.status_code != 200:
-            logger.warning("NWS points lookup failed for venue %d: %s", venue_id, resp.status_code)
+            logger.warning(
+                "NWS points lookup failed for venue %d: %s", venue_id, resp.status_code
+            )
             return {}
 
         data = resp.json()
@@ -215,7 +217,8 @@ class NwsWeather:
 
     @staticmethod
     def _closest_period(
-        periods: list[dict[str, Any]], target: datetime,
+        periods: list[dict[str, Any]],
+        target: datetime,
     ) -> dict[str, Any]:
         """Find the forecast period whose startTime is closest to target."""
         # Make target offset-aware (UTC) for safe comparison with ISO-8601

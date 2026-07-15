@@ -51,14 +51,16 @@ class TeamLeadersFeature(FeatureExtractor):
         rows: list[dict[str, Any]] = []
         for log in game_logs:
             ld = leaders.get(log.opponent_id, {})
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "opp_top_avg": ld.get("top_avg"),
-                "opp_top_hr": ld.get("top_hr"),
-                "opp_top_rbi": ld.get("top_rbi"),
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "opp_top_avg": ld.get("top_avg"),
+                    "opp_top_hr": ld.get("top_hr"),
+                    "opp_top_rbi": ld.get("top_rbi"),
+                }
+            )
 
         return rows
 

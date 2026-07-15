@@ -15,16 +15,18 @@ N_EPOCHS = 10
 
 
 def benchmark(
-    label: str,
+    label_val: str,
     batch_size: int,
     hidden_dim: int = 64,
     n_layers: int = 2,
 ) -> float:
     print(f"\n{'=' * 50}")
-    print(f"Config: {label}")
+    print(f"Config: {label_val}")
     t0 = time.time()
-    model, meta = train_hybrid_model(
-        Xs_train, Xc_train, y_train,
+    _model_val, _meta_val = train_hybrid_model(
+        Xs_train,
+        Xc_train,
+        y_train,
         hidden_dim=hidden_dim,
         n_layers=n_layers,
         dropout=0.2,
@@ -34,9 +36,9 @@ def benchmark(
         verbose=False,
     )
     elapsed = time.time() - t0
-    avg = elapsed / N_EPOCHS
-    print(f"  Total: {elapsed:.1f}s, avg epoch: {avg:.2f}s")
-    return avg
+    avg_val = elapsed / N_EPOCHS
+    print(f"  Total: {elapsed:.1f}s, avg epoch: {avg_val:.2f}s")
+    return avg_val
 
 
 # ── Load data ──────────────────────────────────────────────────────
@@ -47,14 +49,18 @@ print(f"  {len(raw_logs)} logs, {len(feature_matrix)} feature rows")
 
 game_logs: list[PlayerGameLog] = []
 for d in raw_logs:
-    game_logs.append(PlayerGameLog(**{
-        k: v for k, v in d.items()
-        if k in PlayerGameLog.__dataclass_fields__
-    }))
+    game_logs.append(
+        PlayerGameLog(
+            **{k: v for k, v in d.items() if k in PlayerGameLog.__dataclass_fields__}
+        )
+    )
 
 print("Building sequences (full dataset)...")
 Xs_train, Xc_train, y_train, sm, ss, fm, fs = build_hybrid_sequences(
-    game_logs, feature_matrix, targets_list, target_col="target_0.5",
+    game_logs,
+    feature_matrix,
+    targets_list,
+    target_col="target_0.5",
 )
 print(f"Sequences: {len(Xs_train)}")
 
@@ -74,10 +80,15 @@ if speedup >= 1.15:
 
 # Bigger model test
 results["batch=512 + hidden=128"] = benchmark(
-    "batch=512 + hidden=128", batch_size=512, hidden_dim=128,
+    "batch=512 + hidden=128",
+    batch_size=512,
+    hidden_dim=128,
 )
 results["batch=512 + hidden=128 + L3"] = benchmark(
-    "batch=512 + hidden=128 + L3", batch_size=512, hidden_dim=128, n_layers=3,
+    "batch=512 + hidden=128 + L3",
+    batch_size=512,
+    hidden_dim=128,
+    n_layers=3,
 )
 
 print(f"\n{'=' * 50}")

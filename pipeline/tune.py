@@ -35,9 +35,9 @@ def main() -> None:
 
     for model_type in ("lgb", "xgb"):
         for target_col in ("target_0.5", "target_1.5"):
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             print(f"Tuning {model_type.upper()} — {target_col}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             result = tune_hyperparameters(
                 feature_matrix,
@@ -69,7 +69,7 @@ def main() -> None:
             )
             print("  Top 5 trials:")
             for i, t in enumerate(sorted_trials[:5]):
-                print(f"    {i+1}. AUC={t['auc']:.4f} params={t['params']}")
+                print(f"    {i + 1}. AUC={t['auc']:.4f} params={t['params']}")
             print()
 
 

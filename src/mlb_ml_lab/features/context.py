@@ -43,7 +43,9 @@ class ParkFactorFeatures(FeatureExtractor):
             ),
         ]
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         teams: list[dict[str, Any]] | None = kwargs.get("teams")
         venue_map = self._resolve_venue_map(teams)
         season: int | None = kwargs.get("season")
@@ -51,14 +53,16 @@ class ParkFactorFeatures(FeatureExtractor):
         rows: list[dict[str, Any]] = []
         for log in game_logs:
             factors = self._factors_for_game(log, venue_map, season)
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "park_wOBA": factors.get("wOBA", 1.0),
-                "park_HR": factors.get("HR", 1.0),
-                "park_1B": factors.get("1B", 1.0),
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "park_wOBA": factors.get("wOBA", 1.0),
+                    "park_HR": factors.get("HR", 1.0),
+                    "park_1B": factors.get("1B", 1.0),
+                }
+            )
         return rows
 
     def _factors_for_game(
@@ -106,7 +110,9 @@ class HomeAwayFeature(FeatureExtractor):
             )
         ]
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         return [
             {
                 "player_id": log.player_id,
@@ -132,7 +138,9 @@ class RestDaysFeature(FeatureExtractor):
             )
         ]
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         seen: dict[int, str | None] = {}
         for log in game_logs:
@@ -145,12 +153,14 @@ class RestDaysFeature(FeatureExtractor):
                     rest = (d2 - d1).days - 1
                 except ValueError:
                     rest = None
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "rest_days": rest,
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "rest_days": rest,
+                }
+            )
             seen[log.player_id] = log.date
 
         return rows
@@ -186,18 +196,22 @@ class WeatherFeatures(FeatureExtractor):
             ),
         ]
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         contexts: dict[int, dict[str, Any]] | None = kwargs.get("game_contexts")
 
         rows: list[dict[str, Any]] = []
         for log in game_logs:
             ctx = (contexts or {}).get(log.game_pk, {}) if contexts else {}
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "weather_condition": ctx.get("weather_condition"),
-                "weather_temp": ctx.get("weather_temp"),
-                "weather_wind": ctx.get("weather_wind"),
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "weather_condition": ctx.get("weather_condition"),
+                    "weather_temp": ctx.get("weather_temp"),
+                    "weather_wind": ctx.get("weather_wind"),
+                }
+            )
         return rows

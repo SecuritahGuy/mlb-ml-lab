@@ -40,9 +40,17 @@ class TestPlayerGameLog:
 
     def test_hits_over(self):
         log = PlayerGameLog(
-            player_id=1, player_name="Test", team_id=108, opponent_id=145,
-            date="2025-04-01", game_pk=1, is_home=True, is_win=True,
-            game_type="R", season="2025", hits=2,
+            player_id=1,
+            player_name="Test",
+            team_id=108,
+            opponent_id=145,
+            date="2025-04-01",
+            game_pk=1,
+            is_home=True,
+            is_win=True,
+            game_type="R",
+            season="2025",
+            hits=2,
         )
         assert log.hits_over(0.5) is True
         assert log.hits_over(1.5) is True

@@ -41,7 +41,9 @@ class RollingHits(FeatureExtractor):
             )
         return cols
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         by_player: dict[int, list[PlayerGameLog]] = defaultdict(list)
         for log in game_logs:
             by_player[log.player_id].append(log)
@@ -64,7 +66,9 @@ class RollingHits(FeatureExtractor):
                     buf = window_buffers[w]
                     total = sum(buf)
                     row[f"hits_last_{w}"] = total
-                    row[f"hit_rate_last_{w}"] = round(total / w, 3) if len(buf) == w else None
+                    row[f"hit_rate_last_{w}"] = (
+                        round(total / w, 3) if len(buf) == w else None
+                    )
                 rows.append(row)
                 for w in self._windows:
                     window_buffers[w].append(log.hits)
@@ -106,7 +110,9 @@ class RollingPlateAppearances(FeatureExtractor):
             )
         return cols
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         by_player: dict[int, list[PlayerGameLog]] = defaultdict(list)
         for log in game_logs:
             by_player[log.player_id].append(log)
@@ -170,7 +176,9 @@ class RollingBABIP(FeatureExtractor):
             )
         ]
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         by_player: dict[int, list[PlayerGameLog]] = defaultdict(list)
         for log in game_logs:
             by_player[log.player_id].append(log)
@@ -194,12 +202,14 @@ class RollingBABIP(FeatureExtractor):
                     bip = total_ab - total_k - total_bb
                     if bip > 0:
                         babip = round(total_h / bip, 3)
-                rows.append({
-                    "player_id": pid,
-                    "game_pk": log.game_pk,
-                    "date": log.date,
-                    "babip_last_20": babip,
-                })
+                rows.append(
+                    {
+                        "player_id": pid,
+                        "game_pk": log.game_pk,
+                        "date": log.date,
+                        "babip_last_20": babip,
+                    }
+                )
                 hits_buf.append(log.hits)
                 abs_buf.append(log.at_bats)
                 ks_buf.append(log.strikeouts)

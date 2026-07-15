@@ -140,7 +140,9 @@ class MlxNNClassifier:
         steps_per_epoch = max(1, n_samples // self.batch_size)
         total_steps = self.epochs * steps_per_epoch
         lr_schedule = optim.cosine_decay(
-            self.learning_rate, total_steps, end=self.learning_rate * 0.01,
+            self.learning_rate,
+            total_steps,
+            end=self.learning_rate * 0.01,
         )
         optimizer = optim.Adam(learning_rate=lr_schedule)
 
@@ -150,7 +152,9 @@ class MlxNNClassifier:
             # Positive-class weighting
             if self._pos_weight_ != 1.0:
                 weights = mx.where(
-                    y_batch > 0.5, self._pos_weight_, 1.0,
+                    y_batch > 0.5,
+                    self._pos_weight_,
+                    1.0,
                 )
                 losses = losses * weights
             base_loss = losses.mean()
@@ -184,10 +188,9 @@ class MlxNNClassifier:
                 loss, grads = loss_and_grad_fn(x_batch, y_batch)
 
                 # Gradient clipping (element-wise)
-                grads = tree_unflatten([
-                    (k, mx.clip(v, -5.0, 5.0))
-                    for k, v in tree_flatten(grads)
-                ])
+                grads = tree_unflatten(
+                    [(k, mx.clip(v, -5.0, 5.0)) for k, v in tree_flatten(grads)]
+                )
 
                 optimizer.update(self.model_, grads)
                 mx.eval(self.model_.parameters(), optimizer.state)

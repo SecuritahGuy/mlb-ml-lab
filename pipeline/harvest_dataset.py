@@ -32,7 +32,18 @@ from mlb_ml_lab import (
     save_feature_data,
 )
 
-SEASONS = [2016, 2017, 2018, 2019, 2021, 2022, 2023, 2024, 2025, 2026]  # skip 2020 (COVID)
+SEASONS = [
+    2016,
+    2017,
+    2018,
+    2019,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026,
+]  # skip 2020 (COVID)
 POSITIONS_TO_EXCLUDE = {"P"}
 MAX_PLAYERS_PER_TEAM = 20  # safety cap
 MIN_PA = 50  # per-season minimum plate appearances to include a player
@@ -51,7 +62,8 @@ def get_all_teams(client: MlbClient) -> list[dict[str, Any]]:
 
 
 def get_team_rosters(
-    client: MlbClient, seasons: list[int],
+    client: MlbClient,
+    seasons: list[int],
 ) -> dict[tuple[int, int], list[dict[str, Any]]]:
     """Fetch rosters for all teams and seasons.
     Returns dict keyed by ``(team_id, season)``.
@@ -61,14 +73,15 @@ def get_team_rosters(
     print(f"  {len(team_ids)} MLB clubs across {len(seasons)} seasons")
 
     rosters: dict[tuple[int, int], list[dict[str, Any]]] = {}
-    len(team_ids) * len(seasons)
     for idx, tid in enumerate(team_ids):
         for s in seasons:
             roster = client.get_roster(tid, season=s)
             # Filter to position players only
             players = [
-                p for p in roster
-                if (p.get("position") or {}).get("abbreviation", "") not in POSITIONS_TO_EXCLUDE
+                p
+                for p in roster
+                if (p.get("position") or {}).get("abbreviation", "")
+                not in POSITIONS_TO_EXCLUDE
             ][:MAX_PLAYERS_PER_TEAM]
             rosters[(tid, s)] = players
         if (idx + 1) % 5 == 0:
@@ -87,7 +100,7 @@ def fetch_game_logs(
     done = 0
     t0 = time.time()
 
-    for (tid, s), players in rosters.items():
+    for (_tid, s), players in rosters.items():
         for p in players:
             pid = p["person"]["id"]
             raw = client.get_player_game_log(pid, season=s)
@@ -100,15 +113,18 @@ def fetch_game_logs(
             if done % 200 == 0:
                 elapsed = time.time() - t0
                 rate = done / elapsed if elapsed > 0 else 0
-                print(f"    {done}/{total_players} players "
-                      f"({len(all_logs)} game entries, {rate:.0f}/s)")
+                print(
+                    f"    {done}/{total_players} players "
+                    f"({len(all_logs)} game entries, {rate:.0f}/s)"
+                )
 
     print(f"  → {len(all_logs)} total game-log entries")
     return all_logs
 
 
 def fetch_game_contexts(
-    client: MlbClient, seasons: list[int],
+    client: MlbClient,
+    seasons: list[int],
 ) -> dict[int, dict[str, Any]]:
     """Fetch enriched schedule (venue, probable pitchers, datetime) per season.
     This replaces thousands of per-game API calls with one per season.
@@ -124,7 +140,8 @@ def fetch_game_contexts(
 
 
 def fetch_season_schedules(
-    client: MlbClient, seasons: list[int],
+    client: MlbClient,
+    seasons: list[int],
 ) -> dict[int, list[dict[str, Any]]]:
     """Fetch full season schedules."""
     print("  Fetching season schedules…")
@@ -136,7 +153,8 @@ def fetch_season_schedules(
 
 
 def fetch_team_season_stats(
-    client: MlbClient, seasons: list[int],
+    client: MlbClient,
+    seasons: list[int],
 ) -> dict[str, dict[int, Any]]:
     """Fetch team-level hitting & pitching stats per season."""
     all_teams = client.get_teams()
@@ -169,7 +187,9 @@ def fetch_team_season_stats(
 
 
 def fetch_bullpen_stats(
-    client: MlbClient, team_ids: list[int], seasons: list[int],
+    client: MlbClient,
+    team_ids: list[int],
+    seasons: list[int],
 ) -> dict[int, dict[int, dict[str, float]]]:
     """Fetch bullpen stats per team per season.
     Returns dict: season → team_id → stats.
@@ -234,7 +254,7 @@ def fetch_career_stats(
             s = max(seasons) - 1 - i
             try:
                 stats = client.get_player_season_stats(pid, season=s, group=group)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 continue
             if not stats:
                 continue
@@ -277,8 +297,10 @@ def fetch_statcast_data(
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
-    print(f"  Statcast batters: {len(statcast_batters)} rows across {len(seasons)} seasons, "
-          f"Expected stats: {len(expected_stats)} rows")
+    print(
+        f"  Statcast batters: {len(statcast_batters)} rows across {len(seasons)} seasons, "
+        f"Expected stats: {len(expected_stats)} rows"
+    )
     return statcast_batters or None, expected_stats or None
 
 
@@ -288,7 +310,9 @@ def fetch_statcast_data(
 
 
 def fetch_game_pace_stats(
-    client: MlbClient, team_ids: list[int], seasons: list[int],
+    client: MlbClient,
+    team_ids: list[int],
+    seasons: list[int],
 ) -> dict[int, dict[str, float]]:
     """Fetch game pace (time per game, pitches per game) per team per season."""
     result: dict[int, dict[str, float]] = {}
@@ -308,7 +332,9 @@ def fetch_game_pace_stats(
 
 
 def fetch_team_leaders(
-    client: MlbClient, team_ids: list[int], seasons: list[int],
+    client: MlbClient,
+    team_ids: list[int],
+    seasons: list[int],
 ) -> dict[int, dict[str, float]]:
     """Fetch top hitter stats per team (avg, HR, RBI)."""
     result: dict[int, dict[str, float]] = {}
@@ -316,7 +342,8 @@ def fetch_team_leaders(
         for tid in team_ids:
             try:
                 leaders = client.get_team_leaders(
-                    tid, s,
+                    tid,
+                    s,
                     leader_categories=["battingAverage", "homeRuns", "runsBattedIn"],
                     limit=1,
                 )
@@ -420,7 +447,8 @@ def enrich_weather_meteostat(
 
 
 def compute_league_stats(
-    client: MlbClient, seasons: list[int],
+    client: MlbClient,
+    seasons: list[int],
 ) -> dict[int, dict[str, float]]:
     """Compute league-wide avg/obp/slg/ops/runs per season."""
     all_teams = client.get_teams()
@@ -440,18 +468,28 @@ def compute_league_stats(
             continue
 
         _1b = total_h - sum(
-            int(st.get("doubles", 0)) + int(st.get("triples", 0))
+            int(st.get("doubles", 0))
+            + int(st.get("triples", 0))
             + int(st.get("homeRuns", 0))
             for st in hitting.values()
         )
         avg = round(total_h / total_ab, 3)
         obp = round((total_h + total_bb) / (total_ab + total_bb), 3)
-        slg = round((_1b + 2 * sum(int(st.get("doubles", 0)) for st in hitting.values())
-                      + 3 * sum(int(st.get("triples", 0)) for st in hitting.values())
-                      + 4 * sum(int(st.get("homeRuns", 0)) for st in hitting.values()))
-                     / total_ab, 3)
+        slg = round(
+            (
+                _1b
+                + 2 * sum(int(st.get("doubles", 0)) for st in hitting.values())
+                + 3 * sum(int(st.get("triples", 0)) for st in hitting.values())
+                + 4 * sum(int(st.get("homeRuns", 0)) for st in hitting.values())
+            )
+            / total_ab,
+            3,
+        )
         results[s] = {
-            "avg": avg, "obp": obp, "slg": slg, "ops": round(obp + slg, 3),
+            "avg": avg,
+            "obp": obp,
+            "slg": slg,
+            "ops": round(obp + slg, 3),
             "runs_per_game": round(total_r / max(total_g, 1), 2),
         }
     return results
@@ -460,6 +498,7 @@ def compute_league_stats(
 # ---------------------------------------------------------------------------
 # SBR odds loading for feature enrichment
 # ---------------------------------------------------------------------------
+
 
 def ensure_odds_for_dates(dates: list[str]) -> None:
     """Fetch and cache SBR odds for any missing dates."""
@@ -522,9 +561,15 @@ def build_odds_by_game(
             continue
 
         if odds_row["home_team"] == team_abbrev:
-            odds_by_game[key] = {"team_ml": odds_row["home_ml"], "opp_ml": odds_row["away_ml"]}
+            odds_by_game[key] = {
+                "team_ml": odds_row["home_ml"],
+                "opp_ml": odds_row["away_ml"],
+            }
         else:
-            odds_by_game[key] = {"team_ml": odds_row["away_ml"], "opp_ml": odds_row["home_ml"]}
+            odds_by_game[key] = {
+                "team_ml": odds_row["away_ml"],
+                "opp_ml": odds_row["home_ml"],
+            }
         matched += 1
 
     print(f"  Odds matched: {matched} games, {unmatched} unmatched")
@@ -556,8 +601,10 @@ def main() -> None:
     # ── Stage 2: Game Logs ───────────────────────────────────────────────
     print("\n=== Stage 2: Game Logs ===")
     game_logs = fetch_game_logs(client, rosters)
-    print(f"  Date range: {game_logs[0].date if game_logs else 'N/A'} – "
-          f"{game_logs[-1].date if game_logs else 'N/A'}")
+    print(
+        f"  Date range: {game_logs[0].date if game_logs else 'N/A'} – "
+        f"{game_logs[-1].date if game_logs else 'N/A'}"
+    )
 
     # ── Stage 3: Game Contexts (enriched schedule) ────────────────────────
     print("\n=== Stage 3: Game Contexts ===")
@@ -598,9 +645,11 @@ def main() -> None:
         for pid in new_pitchers:
             try:
                 player_details[pid] = client.get_player(pid)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
-    print(f"  → {len(player_details)} total players (incl. {len(new_pitchers)} pitchers)")
+    print(
+        f"  → {len(player_details)} total players (incl. {len(new_pitchers)} pitchers)"
+    )
 
     # ── Stage 8: Career hitting stats ────────────────────────────────────
     print("\n=== Stage 8: Career Hitting Stats ===")
@@ -651,10 +700,7 @@ def main() -> None:
     all_targets: list[dict[str, Any]] = []
 
     for s in SEASONS:
-        season_logs = [
-            log for log in game_logs
-            if log.date[:4] == str(s)
-        ]
+        season_logs = [log for log in game_logs if log.date[:4] == str(s)]
         if not season_logs:
             print(f"  {s}: no game logs, skipping")
             continue
@@ -662,12 +708,19 @@ def main() -> None:
         # Per-season PA filter
         pa_by_pid: dict[int, int] = {}
         for log in season_logs:
-            pa_by_pid[log.player_id] = pa_by_pid.get(log.player_id, 0) + log.plate_appearances
+            pa_by_pid[log.player_id] = (
+                pa_by_pid.get(log.player_id, 0) + log.plate_appearances
+            )
         kept_ids = {pid for pid, pa in pa_by_pid.items() if pa >= MIN_PA}
         season_logs = [log for log in season_logs if log.player_id in kept_ids]
         n_filtered = sum(1 for pid, pa in pa_by_pid.items() if pa < MIN_PA)
-        print(f"  {s}: {len(season_logs)} logs after PA≥{MIN_PA} filter "
-              f"({n_filtered} players removed, {sum(pa_by_pid.values()) - sum(pa for pid, pa in pa_by_pid.items() if pa >= MIN_PA)} PA removed)")
+        pa_removed = sum(pa_by_pid.values()) - sum(
+            pa for pid, pa in pa_by_pid.items() if pa >= MIN_PA
+        )
+        print(
+            f"  {s}: {len(season_logs)} logs after PA≥{MIN_PA} filter "
+            f"({n_filtered} players removed, {pa_removed} PA removed)"
+        )
 
         # Build opponent pitching map for this season
         opp_pitching = team_stats["pitching"].get(s, {})
@@ -679,12 +732,8 @@ def main() -> None:
         print(f"  Building feature matrix for {s} ({len(season_logs)} logs)…")
 
         # Build per-season lookups for additional data
-        s_game_pace = {
-            k[0]: v for k, v in game_pace_stats.items() if k[1] == s
-        }
-        s_team_leaders = {
-            k[0]: v for k, v in team_leaders.items() if k[1] == s
-        }
+        s_game_pace = {k[0]: v for k, v in game_pace_stats.items() if k[1] == s}
+        s_team_leaders = {k[0]: v for k, v in team_leaders.items() if k[1] == s}
 
         fm = build_feature_matrix(
             season_logs,
@@ -713,8 +762,10 @@ def main() -> None:
         all_targets.extend(tgt)
         print(f"    → {len(fm)} feature rows, {len(tgt)} target rows")
 
-    print(f"\n  Total: {len(all_feature_rows)} feature rows, "
-          f"{len(all_targets)} target rows")
+    print(
+        f"\n  Total: {len(all_feature_rows)} feature rows, "
+        f"{len(all_targets)} target rows"
+    )
 
     # ── Stage 13: Save ───────────────────────────────────────────────────
     print("\n=== Stage 13: Saving Dataset ===")

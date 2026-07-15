@@ -64,16 +64,18 @@ class BullpenQualityFeatures(FeatureExtractor):
         rows: list[dict[str, Any]] = []
         for log in game_logs:
             bp = bullpen.get(log.opponent_id, {})
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "bullpen_era": bp.get("era"),
-                "bullpen_k_per_9": bp.get("k_per_9"),
-                "bullpen_whip": bp.get("whip"),
-                "bullpen_ba_against": bp.get("ba_against"),
-                "bullpen_hr_per_9": bp.get("hr_per_9"),
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "bullpen_era": bp.get("era"),
+                    "bullpen_k_per_9": bp.get("k_per_9"),
+                    "bullpen_whip": bp.get("whip"),
+                    "bullpen_ba_against": bp.get("ba_against"),
+                    "bullpen_hr_per_9": bp.get("hr_per_9"),
+                }
+            )
 
         return rows
 

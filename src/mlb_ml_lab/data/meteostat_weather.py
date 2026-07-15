@@ -21,10 +21,22 @@ logger = logging.getLogger(__name__)
 
 # Wind direction degrees → compass point  (16-point compass)
 _DEG_TO_COMPASS = [
-    (11.25, "N"), (33.75, "NNE"), (56.25, "NE"), (78.75, "ENE"),
-    (101.25, "E"), (123.75, "ESE"), (146.25, "SE"), (168.75, "SSE"),
-    (191.25, "S"), (213.75, "SSW"), (236.25, "SW"), (258.75, "WSW"),
-    (281.25, "W"), (303.75, "WNW"), (326.25, "NW"), (348.75, "NNW"),
+    (11.25, "N"),
+    (33.75, "NNE"),
+    (56.25, "NE"),
+    (78.75, "ENE"),
+    (101.25, "E"),
+    (123.75, "ESE"),
+    (146.25, "SE"),
+    (168.75, "SSE"),
+    (191.25, "S"),
+    (213.75, "SSW"),
+    (236.25, "SW"),
+    (258.75, "WSW"),
+    (281.25, "W"),
+    (303.75, "WNW"),
+    (326.25, "NW"),
+    (348.75, "NNW"),
     (360.0, "N"),
 ]
 
@@ -84,11 +96,10 @@ class _RateLimiter:
         self._last_call: float = 0.0
 
     def wait(self) -> None:
-        import time
-        elapsed = time.time() - self._last_call
+        elapsed = _time.time() - self._last_call
         if elapsed < self._min_interval:
-            time.sleep(self._min_interval - elapsed)
-        self._last_call = time.time()
+            _time.sleep(self._min_interval - elapsed)
+        self._last_call = _time.time()
 
 
 class MeteostatWeather:
@@ -144,8 +155,12 @@ class MeteostatWeather:
 
         return {
             "temp": None if pd.isna(row.get("temp")) else row["temp"],
-            "wind_speed": f'{row.get("wspd", 0):.0f} mph' if pd.notna(row.get("wspd")) else "0 mph",
-            "wind_direction": _deg_to_compass(row["wdir"]) if pd.notna(row.get("wdir")) else "",
+            "wind_speed": f"{row.get('wspd', 0):.0f} mph"
+            if pd.notna(row.get("wspd"))
+            else "0 mph",
+            "wind_direction": _deg_to_compass(row["wdir"])
+            if pd.notna(row.get("wdir"))
+            else "",
             "precip_inches": float(row["prcp"]) if pd.notna(row.get("prcp")) else 0.0,
             "conditions": _coco_label(row.get("coco")) or "Unknown",
             "source": "meteostat",
@@ -232,7 +247,9 @@ class MeteostatWeather:
             except Exception:  # pylint: disable=broad-exception-caught
                 logger.warning(
                     "Meteostat fetch failed for %s %s (attempt %d)",
-                    station_id, month_key, attempt + 1,
+                    station_id,
+                    month_key,
+                    attempt + 1,
                 )
                 df = None
 

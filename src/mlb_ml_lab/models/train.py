@@ -42,9 +42,7 @@ class WalkForwardSplit:
     min_train_size: int = 30
     gap: int = 0
 
-    def split(
-        self, dates: list[date]
-    ) -> list[tuple[list[int], list[int]]]:
+    def split(self, dates: list[date]) -> list[tuple[list[int], list[int]]]:
         unique_dates = sorted(set(dates))
         n_dates = len(unique_dates)
         if n_dates < self.min_train_size:
@@ -53,9 +51,7 @@ class WalkForwardSplit:
                 f"(min_train_size={self.min_train_size})"
             )
 
-        fold_dates = (
-            n_dates - self.min_train_size
-        ) // self.n_splits
+        fold_dates = (n_dates - self.min_train_size) // self.n_splits
         if fold_dates < 1:
             raise ValueError(
                 f"{n_dates} unique dates is too few for {self.n_splits} folds"
@@ -63,24 +59,17 @@ class WalkForwardSplit:
 
         folds: list[tuple[list[int], list[int]]] = []
         for i in range(self.n_splits):
-            train_end_date = unique_dates[
-                self.min_train_size + i * fold_dates - 1
-            ]
+            train_end_date = unique_dates[self.min_train_size + i * fold_dates - 1]
             test_start_idx = self.min_train_size + i * fold_dates
             test_start_date = unique_dates[test_start_idx]
             if self.gap:
                 test_start_date += timedelta(days=self.gap)
-            test_end_idx = min(
-                test_start_idx + fold_dates, n_dates
-            )
+            test_end_idx = min(test_start_idx + fold_dates, n_dates)
             test_end_date = unique_dates[test_end_idx - 1]
 
-            train_idx = [
-                j for j, d in enumerate(dates) if d <= train_end_date
-            ]
+            train_idx = [j for j, d in enumerate(dates) if d <= train_end_date]
             test_idx = [
-                j for j, d in enumerate(dates)
-                if test_start_date <= d <= test_end_date
+                j for j, d in enumerate(dates) if test_start_date <= d <= test_end_date
             ]
             if not test_idx:
                 break
@@ -115,13 +104,19 @@ def _merge_features_targets(
 _BASE_PARAMS: dict[str, dict[str, Any]] = {
     "lr": {"max_iter": 1000},
     "xgb": {
-        "n_estimators": 300, "learning_rate": 0.05, "max_depth": 5,
-        "eval_metric": "logloss", "verbosity": 0,
+        "n_estimators": 300,
+        "learning_rate": 0.05,
+        "max_depth": 5,
+        "eval_metric": "logloss",
+        "verbosity": 0,
     },
     "rf": {"n_estimators": 300, "max_depth": 8},
     "lgb": {
-        "n_estimators": 300, "learning_rate": 0.05, "max_depth": 5,
-        "verbosity": -1, "deterministic": True,
+        "n_estimators": 300,
+        "learning_rate": 0.05,
+        "max_depth": 5,
+        "verbosity": -1,
+        "deterministic": True,
     },
     "mlx": {
         "hidden_dims": (256, 128, 64),
@@ -145,7 +140,9 @@ _MODEL_CLASSES: dict[str, Any] = {
 
 
 def _build_model(
-    model_type: str, seed: int, params: dict[str, Any] | None = None,
+    model_type: str,
+    seed: int,
+    params: dict[str, Any] | None = None,
 ) -> Any:
     if model_type == "mlx":
         kwargs = dict(_BASE_PARAMS.get("mlx", {}))
@@ -169,8 +166,12 @@ def _build_model(
 
 
 _ALWAYS_EXCLUDE: set[str] = {
-    "player_id", "game_pk", "date", "hits",
-    "target_0.5", "target_1.5",
+    "player_id",
+    "game_pk",
+    "date",
+    "hits",
+    "target_0.5",
+    "target_1.5",
 }
 
 
@@ -294,15 +295,18 @@ def tune_hyperparameters(
 
     merged = _merge_features_targets(feature_matrix, targets)
     if not merged:
-        return {"error": "no merged rows", "best_params": {}, "best_score": 0.0,
-                "best_std": 0.0, "trials": []}
+        return {
+            "error": "no merged rows",
+            "best_params": {},
+            "best_score": 0.0,
+            "best_std": 0.0,
+            "trials": [],
+        }
     merged.sort(key=lambda r: r["date"])
     dates = [row["date"] for row in merged]
 
     feat_cols = _feature_columns(merged)
-    x_all = np.array(
-        [[row[c] for c in feat_cols] for row in merged], dtype=np.float64
-    )
+    x_all = np.array([[row[c] for c in feat_cols] for row in merged], dtype=np.float64)
     y_all = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")
@@ -314,8 +318,13 @@ def tune_hyperparameters(
     splitter = WalkForwardSplit(n_splits=n_splits)
     folds = splitter.split(dates)
     if not folds:
-        return {"error": "no folds generated", "best_params": {}, "best_score": 0.0,
-                "best_std": 0.0, "trials": []}
+        return {
+            "error": "no folds generated",
+            "best_params": {},
+            "best_score": 0.0,
+            "best_std": 0.0,
+            "trials": [],
+        }
 
     # Build a list of all parameter keys and their candidate lists.
     param_keys = list(param_grid.keys())
@@ -327,7 +336,7 @@ def tune_hyperparameters(
     best_params: dict[str, Any] = {}
     best_std = 0.0
 
-    for trial in range(n_trials):
+    for _ in range(n_trials):
         combo: dict[str, Any] = {}
         for k, vals in zip(param_keys, param_values):
             idx = rng.integers(len(vals))
@@ -336,24 +345,33 @@ def tune_hyperparameters(
         fold_metrics: list[dict[str, float]] = []
         for fold_idx, (train_idx, test_idx) in enumerate(folds):
             metrics = _run_fold(
-                model_type, x_all[train_idx], y_all[train_idx],
-                x_all[test_idx], y_all[test_idx], fold_idx, seed,
+                model_type,
+                x_all[train_idx],
+                y_all[train_idx],
+                x_all[test_idx],
+                y_all[test_idx],
+                fold_idx,
+                seed,
                 params=combo,
             )
             fold_metrics.append(metrics)
 
-        scores = [m[metric] for m in fold_metrics if not np.isnan(m.get(metric, float("nan")))]
+        scores = [
+            m[metric] for m in fold_metrics if not np.isnan(m.get(metric, float("nan")))
+        ]
         if not scores:
             continue
         mean_score = float(np.mean(scores))
         std_score = float(np.std(scores)) if len(scores) > 1 else 0.0
 
-        trials.append({
-            "params": dict(combo),
-            metric: mean_score,
-            f"{metric}_std": std_score,
-            "fold_metrics": fold_metrics,
-        })
+        trials.append(
+            {
+                "params": dict(combo),
+                metric: mean_score,
+                f"{metric}_std": std_score,
+                "fold_metrics": fold_metrics,
+            }
+        )
 
         better = mean_score > best_score if metric == "auc" else mean_score < best_score
         if better:
@@ -375,8 +393,13 @@ def tune_hyperparameters(
 
 
 def _run_fold(
-    model_type: str, x_train: np.ndarray, y_train: np.ndarray,
-    x_test: np.ndarray, y_test: np.ndarray, fold_idx: int, seed: int,
+    model_type: str,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_test: np.ndarray,
+    y_test: np.ndarray,
+    fold_idx: int,
+    seed: int,
     params: dict[str, Any] | None = None,
 ) -> dict[str, float]:
     model = _build_model(model_type, seed, params=params)
@@ -384,7 +407,9 @@ def _run_fold(
     y_pred = model.predict(x_test)
     y_proba = model.predict_proba(x_test)[:, 1]
     metrics = classification_metrics(
-        y_test.tolist(), y_pred.tolist(), y_proba.tolist(),
+        y_test.tolist(),
+        y_pred.tolist(),
+        y_proba.tolist(),
     )
     metrics["fold"] = fold_idx
     metrics["n_train"] = len(x_train)
@@ -394,8 +419,13 @@ def _run_fold(
 
 
 def _run_ensemble_fold(
-    eval_models: list[str], x_train: np.ndarray, y_train: np.ndarray,
-    x_test: np.ndarray, y_test: np.ndarray, fold_idx: int, seed: int,
+    eval_models: list[str],
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_test: np.ndarray,
+    y_test: np.ndarray,
+    fold_idx: int,
+    seed: int,
 ) -> dict[str, float]:
     probas: list[np.ndarray] = []
     for mt in eval_models:
@@ -407,7 +437,9 @@ def _run_ensemble_fold(
     avg_proba = np.mean(probas, axis=0)
     avg_pred = (avg_proba > 0.5).astype(np.int32)
     metrics = classification_metrics(
-        y_test.tolist(), avg_pred.tolist(), avg_proba.tolist(),
+        y_test.tolist(),
+        avg_pred.tolist(),
+        avg_proba.tolist(),
     )
     metrics["fold"] = fold_idx
     metrics["n_train"] = len(x_train)
@@ -433,12 +465,8 @@ def train_baselines(
     dates = [row["date"] for row in merged]
     feat_cols = _feature_columns(merged)
 
-    x_all = np.array(
-        [[row[c] for c in feat_cols] for row in merged], dtype=np.float64
-    )
-    y_all = np.array(
-        [row[target_col] for row in merged], dtype=np.int32
-    )
+    x_all = np.array([[row[c] for c in feat_cols] for row in merged], dtype=np.float64)
+    y_all = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")
     with warnings.catch_warnings():
@@ -466,16 +494,24 @@ def train_baselines(
         fold_metrics: list[dict[str, float]] = []
         for fold_idx, (train_idx, test_idx) in enumerate(folds):
             metrics = _run_fold(
-                model_type, x_all[train_idx], y_all[train_idx],
-                x_all[test_idx], y_all[test_idx], fold_idx, seed,
+                model_type,
+                x_all[train_idx],
+                y_all[train_idx],
+                x_all[test_idx],
+                y_all[test_idx],
+                fold_idx,
+                seed,
             )
             fold_metrics.append(metrics)
 
         avg_acc = float(np.mean([m["accuracy"] for m in fold_metrics]))
         avg_auc = float(
             np.mean(
-                [m["auc"] for m in fold_metrics
-                 if not np.isnan(m.get("auc", float("nan")))]
+                [
+                    m["auc"]
+                    for m in fold_metrics
+                    if not np.isnan(m.get("auc", float("nan")))
+                ]
             )
         )
         results["models"][model_type] = {
@@ -490,8 +526,13 @@ def train_baselines(
     if do_ensemble:
         ensemble_metrics = [
             _run_ensemble_fold(
-                eval_models, x_all[train_idx], y_all[train_idx],
-                x_all[test_idx], y_all[test_idx], fold_idx, seed,
+                eval_models,
+                x_all[train_idx],
+                y_all[train_idx],
+                x_all[test_idx],
+                y_all[test_idx],
+                fold_idx,
+                seed,
             )
             for fold_idx, (train_idx, test_idx) in enumerate(folds)
         ]
@@ -500,8 +541,11 @@ def train_baselines(
             "avg_accuracy": float(np.mean([m["accuracy"] for m in ensemble_metrics])),
             "avg_auc": float(
                 np.mean(
-                    [m["auc"] for m in ensemble_metrics
-                     if not np.isnan(m.get("auc", float("nan")))]
+                    [
+                        m["auc"]
+                        for m in ensemble_metrics
+                        if not np.isnan(m.get("auc", float("nan")))
+                    ]
                 )
             ),
             "n_folds": len(ensemble_metrics),
@@ -584,9 +628,7 @@ def load_model(
     feature_cols: list[str] = joblib.load(
         os.path.join(directory, "feature_cols.joblib")
     )
-    imputer: SimpleImputer = joblib.load(
-        os.path.join(directory, "imputer.joblib")
-    )
+    imputer: SimpleImputer = joblib.load(os.path.join(directory, "imputer.joblib"))
     return model, feature_cols, imputer, metadata
 
 
@@ -620,14 +662,16 @@ def train_final(
     """
     merged = _merge_features_targets(feature_matrix, targets)
     if not merged:
-        return {"model": None, "feature_cols": [], "imputer": None,
-                "metadata": {"error": "no merged rows"}}
+        return {
+            "model": None,
+            "feature_cols": [],
+            "imputer": None,
+            "metadata": {"error": "no merged rows"},
+        }
     merged.sort(key=lambda r: r["date"])
 
     feat_cols = _feature_columns(merged)
-    x = np.array(
-        [[row[c] for c in feat_cols] for row in merged], dtype=np.float64
-    )
+    x = np.array([[row[c] for c in feat_cols] for row in merged], dtype=np.float64)
     y = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")

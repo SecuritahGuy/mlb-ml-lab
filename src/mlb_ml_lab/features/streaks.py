@@ -55,13 +55,15 @@ def _from_api_streaks(
     rows: list[dict[str, Any]] = []
     for log in game_logs:
         s = streaks.get(log.player_id, {})
-        rows.append({
-            "player_id": log.player_id,
-            "game_pk": log.game_pk,
-            "date": log.date,
-            "hitting_streak": s.get("hitting"),
-            "onbase_streak": s.get("onbase"),
-        })
+        rows.append(
+            {
+                "player_id": log.player_id,
+                "game_pk": log.game_pk,
+                "date": log.date,
+                "hitting_streak": s.get("hitting"),
+                "onbase_streak": s.get("onbase"),
+            }
+        )
     return rows
 
 
@@ -95,13 +97,15 @@ def _compute_from_logs(game_logs: list[Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for log in game_logs:
         s = per_game.get((log.player_id, log.game_pk), {})
-        rows.append({
-            "player_id": log.player_id,
-            "game_pk": log.game_pk,
-            "date": log.date,
-            "hitting_streak": s.get("hitting"),
-            "onbase_streak": s.get("onbase"),
-        })
+        rows.append(
+            {
+                "player_id": log.player_id,
+                "game_pk": log.game_pk,
+                "date": log.date,
+                "hitting_streak": s.get("hitting"),
+                "onbase_streak": s.get("onbase"),
+            }
+        )
     return rows
 
 

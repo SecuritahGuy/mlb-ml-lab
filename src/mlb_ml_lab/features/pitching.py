@@ -23,25 +23,46 @@ class StartingPitcherFeatures(FeatureExtractor):
     @property
     def features(self) -> list[FeatureMeta]:
         return [
-            FeatureMeta(name="opp_pitcher_era",
-                        description="Opposing starter ERA (prev season or season-to-date)",
-                        source="pitching"),
-            FeatureMeta(name="opp_pitcher_k_per_9",
-                        description="Opposing starter K/9", source="pitching"),
-            FeatureMeta(name="opp_pitcher_whip",
-                        description="Opposing starter WHIP", source="pitching"),
-            FeatureMeta(name="opp_pitcher_ba_against",
-                        description="Opposing starter BAA", source="pitching"),
-            FeatureMeta(name="opp_pitcher_hr_per_9",
-                        description="Opposing starter HR/9", source="pitching"),
-            FeatureMeta(name="opp_pitcher_k_rate",
-                        description="Opposing starter K per PA", source="pitching"),
-            FeatureMeta(name="opp_pitcher_bf_per_9",
-                        description="Opposing starter batters faced per 9 innings",
-                        source="pitching"),
-            FeatureMeta(name="same_hand_advantage",
-                        description="1 if batter and pitcher share handedness (pitcher advantage)",
-                        source="pitching"),
+            FeatureMeta(
+                name="opp_pitcher_era",
+                description="Opposing starter ERA (prev season or season-to-date)",
+                source="pitching",
+            ),
+            FeatureMeta(
+                name="opp_pitcher_k_per_9",
+                description="Opposing starter K/9",
+                source="pitching",
+            ),
+            FeatureMeta(
+                name="opp_pitcher_whip",
+                description="Opposing starter WHIP",
+                source="pitching",
+            ),
+            FeatureMeta(
+                name="opp_pitcher_ba_against",
+                description="Opposing starter BAA",
+                source="pitching",
+            ),
+            FeatureMeta(
+                name="opp_pitcher_hr_per_9",
+                description="Opposing starter HR/9",
+                source="pitching",
+            ),
+            FeatureMeta(
+                name="opp_pitcher_k_rate",
+                description="Opposing starter K per PA",
+                source="pitching",
+            ),
+            FeatureMeta(
+                name="opp_pitcher_bf_per_9",
+                description="Opposing starter batters faced per 9 innings",
+                source="pitching",
+            ),
+            FeatureMeta(
+                name="same_hand_advantage",
+                description="1 if batter and pitcher share handedness (pitcher advantage)",
+                source="pitching",
+            ),
         ]
 
     def extract(self, game_logs: list[Any], **kwargs: Any) -> list[dict[str, Any]]:
@@ -67,22 +88,28 @@ class StartingPitcherFeatures(FeatureExtractor):
                 pdetail = player_details.get(opp_pitcher_id)
 
             # Platoon advantage: same handedness = pitcher advantage
-            batter_detail = (player_details or {}).get(log.player_id, {}) if player_details else {}
+            batter_detail = (
+                (player_details or {}).get(log.player_id, {}) if player_details else {}
+            )
             platoon = _compute_platoon(batter_detail, pdetail)
 
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "opp_pitcher_era": _float_or_none(pstats.get("era")),
-                "opp_pitcher_k_per_9": _float_or_none(pstats.get("strikeoutsPer9Inn")),
-                "opp_pitcher_whip": _float_or_none(pstats.get("whip")),
-                "opp_pitcher_ba_against": _str_avg_or_none(pstats.get("avg")),
-                "opp_pitcher_hr_per_9": _float_or_none(pstats.get("homeRunsPer9")),
-                "opp_pitcher_k_rate": _compute_k_rate(pstats),
-                "opp_pitcher_bf_per_9": _compute_bf_per_9(pstats),
-                "same_hand_advantage": platoon,
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "opp_pitcher_era": _float_or_none(pstats.get("era")),
+                    "opp_pitcher_k_per_9": _float_or_none(
+                        pstats.get("strikeoutsPer9Inn")
+                    ),
+                    "opp_pitcher_whip": _float_or_none(pstats.get("whip")),
+                    "opp_pitcher_ba_against": _str_avg_or_none(pstats.get("avg")),
+                    "opp_pitcher_hr_per_9": _float_or_none(pstats.get("homeRunsPer9")),
+                    "opp_pitcher_k_rate": _compute_k_rate(pstats),
+                    "opp_pitcher_bf_per_9": _compute_bf_per_9(pstats),
+                    "same_hand_advantage": platoon,
+                }
+            )
         return rows
 
 

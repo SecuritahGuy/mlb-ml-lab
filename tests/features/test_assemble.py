@@ -4,11 +4,21 @@ from mlb_ml_lab.features.assemble import build_feature_matrix, describe_features
 
 def _log(**kw) -> PlayerGameLog:
     defaults = {
-        "player_id": 1, "player_name": "A", "team_id": 108, "opponent_id": 145,
-        "date": "2025-04-01", "game_pk": 1000, "is_home": True, "is_win": True,
-        "game_type": "R", "season": "2025",
-        "hits": 1, "at_bats": 4, "plate_appearances": 4,
-        "walks": 0, "strikeouts": 1,
+        "player_id": 1,
+        "player_name": "A",
+        "team_id": 108,
+        "opponent_id": 145,
+        "date": "2025-04-01",
+        "game_pk": 1000,
+        "is_home": True,
+        "is_win": True,
+        "game_type": "R",
+        "season": "2025",
+        "hits": 1,
+        "at_bats": 4,
+        "plate_appearances": 4,
+        "walks": 0,
+        "strikeouts": 1,
     }
     defaults.update(kw)
     return PlayerGameLog(**defaults)
@@ -69,19 +79,37 @@ class TestBuildFeatureMatrix:
 
     def test_with_opponent_pitching(self):
         pitching = {
-            145: {"era": 3.50, "k_per_9": 9.2, "whip": 1.20, "ba_against": 0.235, "hr_per_9": 1.1},
+            145: {
+                "era": 3.50,
+                "k_per_9": 9.2,
+                "whip": 1.20,
+                "ba_against": 0.235,
+                "hr_per_9": 1.1,
+            },
         }
         logs = [_log(team_id=108, opponent_id=145)]
-        matrix = build_feature_matrix(logs, extra_kwargs={"opponent_pitching": pitching})
+        matrix = build_feature_matrix(
+            logs, extra_kwargs={"opponent_pitching": pitching}
+        )
         assert matrix[0]["opp_era"] == 3.50
 
     def test_all_optional_data_combined(self):
         teams = [{"id": 108, "venue": {"id": 19}}, {"id": 145, "venue": {"id": 680}}]
         contexts = {
-            1000: {"weather_condition": "Cloudy", "weather_temp": "68", "weather_wind": "8 mph"},
+            1000: {
+                "weather_condition": "Cloudy",
+                "weather_temp": "68",
+                "weather_wind": "8 mph",
+            },
         }
         pitching = {
-            145: {"era": 4.00, "k_per_9": 8.5, "whip": 1.30, "ba_against": 0.250, "hr_per_9": 1.0},
+            145: {
+                "era": 4.00,
+                "k_per_9": 8.5,
+                "whip": 1.30,
+                "ba_against": 0.250,
+                "hr_per_9": 1.0,
+            },
         }
         logs = [_log(team_id=108, opponent_id=145, is_home=True, game_pk=1000)]
         matrix = build_feature_matrix(

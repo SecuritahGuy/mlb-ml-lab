@@ -26,37 +26,65 @@ class PlayerQualityFeatures(FeatureExtractor):
     @property
     def features(self) -> list[FeatureMeta]:
         return [
-            FeatureMeta(name="player_age", description="Player age at game date (years)",
-                        source="player"),
-            FeatureMeta(name="years_experience",
-                        description="Years since MLB debut at game date",
-                        source="player"),
-            FeatureMeta(name="bats_right", description="1 if bats right-handed",
-                        source="player"),
-            FeatureMeta(name="bats_left", description="1 if bats left-handed",
-                        source="player"),
-            FeatureMeta(name="throws_right", description="1 if throws right-handed",
-                        source="player"),
-            FeatureMeta(name="throws_left", description="1 if throws left-handed",
-                        source="player"),
-            FeatureMeta(name="position_cat", description="0=IF, 1=OF, 2=C, 3=DH",
-                        source="player"),
-            FeatureMeta(name="career_avg",
-                        description="Weighted career batting average (last 3 seasons)",
-                        source="player"),
-            FeatureMeta(name="career_obp",
-                        description="Weighted career on-base percentage",
-                        source="player"),
-            FeatureMeta(name="career_slg",
-                        description="Weighted career slugging percentage",
-                        source="player"),
-            FeatureMeta(name="career_ops",
-                        description="Weighted career OPS", source="player"),
-            FeatureMeta(name="career_hr",
-                        description="Weighted career home runs", source="player"),
+            FeatureMeta(
+                name="player_age",
+                description="Player age at game date (years)",
+                source="player",
+            ),
+            FeatureMeta(
+                name="years_experience",
+                description="Years since MLB debut at game date",
+                source="player",
+            ),
+            FeatureMeta(
+                name="bats_right", description="1 if bats right-handed", source="player"
+            ),
+            FeatureMeta(
+                name="bats_left", description="1 if bats left-handed", source="player"
+            ),
+            FeatureMeta(
+                name="throws_right",
+                description="1 if throws right-handed",
+                source="player",
+            ),
+            FeatureMeta(
+                name="throws_left",
+                description="1 if throws left-handed",
+                source="player",
+            ),
+            FeatureMeta(
+                name="position_cat",
+                description="0=IF, 1=OF, 2=C, 3=DH",
+                source="player",
+            ),
+            FeatureMeta(
+                name="career_avg",
+                description="Weighted career batting average (last 3 seasons)",
+                source="player",
+            ),
+            FeatureMeta(
+                name="career_obp",
+                description="Weighted career on-base percentage",
+                source="player",
+            ),
+            FeatureMeta(
+                name="career_slg",
+                description="Weighted career slugging percentage",
+                source="player",
+            ),
+            FeatureMeta(
+                name="career_ops", description="Weighted career OPS", source="player"
+            ),
+            FeatureMeta(
+                name="career_hr",
+                description="Weighted career home runs",
+                source="player",
+            ),
         ]
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         player_details: dict[int, dict[str, Any]] | None = kwargs.get("player_details")
         career_stats: dict[int, dict[str, Any]] | None = kwargs.get("career_stats")
 
@@ -68,25 +96,28 @@ class PlayerQualityFeatures(FeatureExtractor):
 
             game_dt = _parse_date(log.date)
 
-            rows.append({
-                "player_id": pid,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "player_age": _compute_age(detail.get("birthDate", ""), game_dt),
-                "years_experience": _compute_experience(
-                    detail.get("mlbDebutDate", ""), game_dt,
-                ),
-                "bats_right": _bats_code(detail, "R"),
-                "bats_left": _bats_code(detail, "L"),
-                "throws_right": _throws_code(detail, "R"),
-                "throws_left": _throws_code(detail, "L"),
-                "position_cat": _position_category(detail),
-                "career_avg": _str_avg_or_none(stats.get("avg")),
-                "career_obp": _str_avg_or_none(stats.get("obp")),
-                "career_slg": _str_avg_or_none(stats.get("slg")),
-                "career_ops": _float_or_none(stats.get("ops")),
-                "career_hr": _float_or_none(stats.get("homeRuns")),
-            })
+            rows.append(
+                {
+                    "player_id": pid,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "player_age": _compute_age(detail.get("birthDate", ""), game_dt),
+                    "years_experience": _compute_experience(
+                        detail.get("mlbDebutDate", ""),
+                        game_dt,
+                    ),
+                    "bats_right": _bats_code(detail, "R"),
+                    "bats_left": _bats_code(detail, "L"),
+                    "throws_right": _throws_code(detail, "R"),
+                    "throws_left": _throws_code(detail, "L"),
+                    "position_cat": _position_category(detail),
+                    "career_avg": _str_avg_or_none(stats.get("avg")),
+                    "career_obp": _str_avg_or_none(stats.get("obp")),
+                    "career_slg": _str_avg_or_none(stats.get("slg")),
+                    "career_ops": _float_or_none(stats.get("ops")),
+                    "career_hr": _float_or_none(stats.get("homeRuns")),
+                }
+            )
         return rows
 
 
@@ -133,8 +164,14 @@ def _position_category(detail: dict[str, Any]) -> int | None:
     pos = detail.get("primaryPosition", {}) or {}
     abbr = pos.get("abbreviation", "")
     mapping = {
-        "1B": 0, "2B": 0, "3B": 0, "SS": 0,
-        "LF": 1, "CF": 1, "RF": 1, "OF": 1,
+        "1B": 0,
+        "2B": 0,
+        "3B": 0,
+        "SS": 0,
+        "LF": 1,
+        "CF": 1,
+        "RF": 1,
+        "OF": 1,
         "C": 2,
         "DH": 3,
     }

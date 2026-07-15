@@ -50,13 +50,15 @@ def _fetch_page(date_str: str) -> dict[str, Any] | None:
     url = f"{SBR_BASE}?date={date_str}"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
-        html = urllib.request.urlopen(req, timeout=15).read().decode()
-    except Exception:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            html = response.read().decode()
+    except (urllib.error.URLError, OSError):
         return None
 
     match = re.search(
         r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
-        html, re.DOTALL,
+        html,
+        re.DOTALL,
     )
     if not match:
         return None
@@ -84,11 +86,15 @@ def fetch_game_odds(
         return []
 
     otm = (
-        parsed.get("props", {})
-        .get("pageProps", {})
-        .get("oddsTables", [{}])[0]
-        .get("oddsTableModel", {})
-    ) if parsed.get("props", {}).get("pageProps", {}).get("oddsTables") else {}
+        (
+            parsed.get("props", {})
+            .get("pageProps", {})
+            .get("oddsTables", [{}])[0]
+            .get("oddsTableModel", {})
+        )
+        if parsed.get("props", {}).get("pageProps", {}).get("oddsTables")
+        else {}
+    )
     game_rows = otm.get("gameRows", [])
     sportsbooks = otm.get("sportsbooks", [])
 
@@ -114,23 +120,25 @@ def fetch_game_odds(
 
         away_starter = gv.get("awayStarter") or {}
         home_starter = gv.get("homeStarter") or {}
-        results.append({
-            "game_id": gv["gameId"],
-            "date": date_str,
-            "away_team": _parse_sbr_abbrev(away_abbrev),
-            "home_team": _parse_sbr_abbrev(home_abbrev),
-            "away_pitcher": away_starter.get("lastName", ""),
-            "home_pitcher": home_starter.get("lastName", ""),
-            "away_ml": cur.get("awayOdds"),
-            "home_ml": cur.get("homeOdds"),
-            "away_spread": cur.get("awaySpread"),
-            "home_spread": cur.get("homeSpread"),
-            "over": cur.get("overOdds"),
-            "under": cur.get("underOdds"),
-            "open_away_ml": open_line.get("awayOdds"),
-            "open_home_ml": open_line.get("homeOdds"),
-            "start_time": gv.get("startDate", ""),
-        })
+        results.append(
+            {
+                "game_id": gv["gameId"],
+                "date": date_str,
+                "away_team": _parse_sbr_abbrev(away_abbrev),
+                "home_team": _parse_sbr_abbrev(home_abbrev),
+                "away_pitcher": away_starter.get("lastName", ""),
+                "home_pitcher": home_starter.get("lastName", ""),
+                "away_ml": cur.get("awayOdds"),
+                "home_ml": cur.get("homeOdds"),
+                "away_spread": cur.get("awaySpread"),
+                "home_spread": cur.get("homeSpread"),
+                "over": cur.get("overOdds"),
+                "under": cur.get("underOdds"),
+                "open_away_ml": open_line.get("awayOdds"),
+                "open_home_ml": open_line.get("homeOdds"),
+                "start_time": gv.get("startDate", ""),
+            }
+        )
 
     return results
 
@@ -188,7 +196,7 @@ def load_cached_odds(date_str: str) -> list[dict[str, Any]] | None:
     """Load SBR odds from disk cache."""
     path = os.path.join(ODDS_CACHE_DIR, f"{date_str}.json")
     if os.path.isfile(path):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     return None
 
@@ -197,7 +205,7 @@ def save_cached_odds(date_str: str, odds: list[dict[str, Any]]) -> None:
     """Save SBR odds to disk cache."""
     os.makedirs(ODDS_CACHE_DIR, exist_ok=True)
     cache_path = os.path.join(ODDS_CACHE_DIR, f"{date_str}.json")
-    with open(cache_path, "w") as f:
+    with open(cache_path, "w", encoding="utf-8") as f:
         json.dump(odds, f, default=str)
 
 

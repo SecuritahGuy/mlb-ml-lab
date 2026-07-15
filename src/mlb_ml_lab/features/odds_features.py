@@ -27,10 +27,22 @@ class OddsFeatures(FeatureExtractor):
     @property
     def features(self) -> list[FeatureMeta]:
         return [
-            FeatureMeta(name="team_ml", description="Team's moneyline odds", source="odds"),
-            FeatureMeta(name="opp_ml", description="Opponent's moneyline odds", source="odds"),
-            FeatureMeta(name="team_implied_prob", description="Team's implied win pct from moneyline", source="odds"),
-            FeatureMeta(name="opp_implied_prob", description="Opponent's implied win probability", source="odds"),
+            FeatureMeta(
+                name="team_ml", description="Team's moneyline odds", source="odds"
+            ),
+            FeatureMeta(
+                name="opp_ml", description="Opponent's moneyline odds", source="odds"
+            ),
+            FeatureMeta(
+                name="team_implied_prob",
+                description="Team's implied win pct from moneyline",
+                source="odds",
+            ),
+            FeatureMeta(
+                name="opp_implied_prob",
+                description="Opponent's implied win probability",
+                source="odds",
+            ),
         ]
 
     def extract(
@@ -48,13 +60,15 @@ class OddsFeatures(FeatureExtractor):
             team_ml = odds.get("team_ml")
             opp_ml = odds.get("opp_ml")
 
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "team_ml": team_ml,
-                "opp_ml": opp_ml,
-                "team_implied_prob": ml_to_implied_prob(team_ml),
-                "opp_implied_prob": ml_to_implied_prob(opp_ml),
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "team_ml": team_ml,
+                    "opp_ml": opp_ml,
+                    "team_implied_prob": ml_to_implied_prob(team_ml),
+                    "opp_implied_prob": ml_to_implied_prob(opp_ml),
+                }
+            )
         return rows

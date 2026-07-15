@@ -22,6 +22,7 @@ def main() -> None:
     # Build index of (date, away_team_abbrev, home_team_abbrev) → games
     # We need to map team_id → abbreviation. Let's fetch teams from MLB API.
     from mlb_ml_lab import MlbClient
+
     client = MlbClient()
     teams = client.get_teams()
     id_to_abbrev: dict[int, str] = {}
@@ -41,10 +42,18 @@ def main() -> None:
 
     # Test a few dates across different seasons
     test_dates = [
-        "2022-05-15", "2022-07-04", "2022-09-01",
-        "2023-05-15", "2023-07-04", "2023-09-01",
-        "2024-05-15", "2024-07-04", "2024-09-01",
-        "2025-05-15", "2025-07-04", "2025-09-01",
+        "2022-05-15",
+        "2022-07-04",
+        "2022-09-01",
+        "2023-05-15",
+        "2023-07-04",
+        "2023-09-01",
+        "2024-05-15",
+        "2024-07-04",
+        "2024-09-01",
+        "2025-05-15",
+        "2025-07-04",
+        "2025-09-01",
     ]
 
     total_matched = 0
@@ -78,15 +87,22 @@ def main() -> None:
         total_sbr_games += sbr_games
 
         ml_list = [g.get("away_ml") for g in odds if g.get("away_ml") is not None]
-        print(f"  {date_str}: SBR={sbr_games} games, matched={matched}/{sbr_games}, "
-              f"odds_range={min(ml_list)}~{max(ml_list)}" if ml_list else f"  {date_str}: {sbr_games} games, matched={matched}")
+        if ml_list:
+            print(
+                f"  {date_str}: SBR={sbr_games} games, matched={matched}/{sbr_games}, "
+                f"odds_range={min(ml_list)}~{max(ml_list)}"
+            )
+        else:
+            print(f"  {date_str}: {sbr_games} games, matched={matched}")
 
-    print(f"\n  Total: {total_matched}/{total_sbr_games} games matched ({total_matched/total_sbr_games*100:.0f}%)")
+    pct = total_matched / total_sbr_games * 100 if total_sbr_games else 0
+    print(f"\n  Total: {total_matched}/{total_sbr_games} games matched ({pct:.0f}%)")
     print()
 
     # Also test a dense week
     print("Testing 7-day window: 2024-05-13 → 2024-05-19...")
     from datetime import date, timedelta
+
     start = date(2024, 5, 13)
     end = date(2024, 5, 19)
     week_matched = 0
@@ -105,7 +121,9 @@ def main() -> None:
             if our:
                 week_matched += 1
         current += timedelta(days=1)
-    print(f"  Week matched: {week_matched}/{week_sbr} ({week_matched/week_sbr*100:.0f}%)")
+    print(
+        f"  Week matched: {week_matched}/{week_sbr} ({week_matched / week_sbr * 100:.0f}%)"
+    )
 
 
 if __name__ == "__main__":

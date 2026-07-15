@@ -89,7 +89,9 @@ def _process_player(
     windows: list[int],
     rows: list[dict[str, Any]],
 ) -> None:
-    bufs: dict[int, _StatcastRollingBuffer] = {w: _StatcastRollingBuffer(w) for w in windows}
+    bufs: dict[int, _StatcastRollingBuffer] = {
+        w: _StatcastRollingBuffer(w) for w in windows
+    }
 
     gs_index = 0
     n_gs = len(gs_list)
@@ -111,34 +113,38 @@ def _process_player(
             buf = bufs[w]
             n = buf.bbe_count
             if n == 0:
-                row.update({
-                    f"sc_avg_ev_{w}": None,
-                    f"sc_hardhit_rate_{w}": None,
-                    f"sc_barrel_rate_{w}": None,
-                    f"sc_avg_la_{w}": None,
-                    f"sc_sweet_spot_rate_{w}": None,
-                    f"sc_avg_xba_{w}": None,
-                    f"sc_avg_xwoba_{w}": None,
-                    f"sc_avg_distance_{w}": None,
-                    f"sc_fbld_rate_{w}": None,
-                    f"sc_gb_rate_{w}": None,
-                    f"sc_bbe_count_{w}": 0,
-                })
+                row.update(
+                    {
+                        f"sc_avg_ev_{w}": None,
+                        f"sc_hardhit_rate_{w}": None,
+                        f"sc_barrel_rate_{w}": None,
+                        f"sc_avg_la_{w}": None,
+                        f"sc_sweet_spot_rate_{w}": None,
+                        f"sc_avg_xba_{w}": None,
+                        f"sc_avg_xwoba_{w}": None,
+                        f"sc_avg_distance_{w}": None,
+                        f"sc_fbld_rate_{w}": None,
+                        f"sc_gb_rate_{w}": None,
+                        f"sc_bbe_count_{w}": 0,
+                    }
+                )
                 continue
 
-            row.update({
-                f"sc_avg_ev_{w}": buf.avg_ev,
-                f"sc_hardhit_rate_{w}": round(buf.hardhit_count / n, 3),
-                f"sc_barrel_rate_{w}": round(buf.barrel_count / n, 3),
-                f"sc_avg_la_{w}": buf.avg_la,
-                f"sc_sweet_spot_rate_{w}": round(buf.sweet_spot_count / n, 3),
-                f"sc_avg_xba_{w}": buf.avg_xba,
-                f"sc_avg_xwoba_{w}": buf.avg_xwoba,
-                f"sc_avg_distance_{w}": buf.avg_distance,
-                f"sc_fbld_rate_{w}": round((buf.fb_count + buf.ld_count) / n, 3),
-                f"sc_gb_rate_{w}": round(buf.gb_count / n, 3),
-                f"sc_bbe_count_{w}": n,
-            })
+            row.update(
+                {
+                    f"sc_avg_ev_{w}": buf.avg_ev,
+                    f"sc_hardhit_rate_{w}": round(buf.hardhit_count / n, 3),
+                    f"sc_barrel_rate_{w}": round(buf.barrel_count / n, 3),
+                    f"sc_avg_la_{w}": buf.avg_la,
+                    f"sc_sweet_spot_rate_{w}": round(buf.sweet_spot_count / n, 3),
+                    f"sc_avg_xba_{w}": buf.avg_xba,
+                    f"sc_avg_xwoba_{w}": buf.avg_xwoba,
+                    f"sc_avg_distance_{w}": buf.avg_distance,
+                    f"sc_fbld_rate_{w}": round((buf.fb_count + buf.ld_count) / n, 3),
+                    f"sc_gb_rate_{w}": round(buf.gb_count / n, 3),
+                    f"sc_bbe_count_{w}": n,
+                }
+            )
 
         rows.append(row)
 
@@ -164,10 +170,25 @@ def _advance_buffer(
 
 
 class _GameStat:
-    __slots__ = ("player_id", "game_pk", "date", "avg_ev", "hardhit_count",
-                 "barrel_count", "avg_la", "sweet_spot_count", "avg_xba",
-                 "avg_xwoba", "avg_distance", "fb_count", "ld_count",
-                 "gb_count", "bunt_count", "popup_count", "bbe_count")
+    __slots__ = (
+        "player_id",
+        "game_pk",
+        "date",
+        "avg_ev",
+        "hardhit_count",
+        "barrel_count",
+        "avg_la",
+        "sweet_spot_count",
+        "avg_xba",
+        "avg_xwoba",
+        "avg_distance",
+        "fb_count",
+        "ld_count",
+        "gb_count",
+        "bunt_count",
+        "popup_count",
+        "bbe_count",
+    )
 
     def __init__(self, **kw: Any) -> None:
         for k, v in kw.items():
@@ -352,25 +373,27 @@ def _compute_per_game_stats(
         avg_xwoba = _mean_or_none([b.xwoba for b in bbes])
         avg_dist = _mean_or_none([b.distance for b in bbes])
 
-        results.append(_GameStat(
-            player_id=pid,
-            game_pk=pk,
-            date=gd,
-            avg_ev=avg_ev,
-            hardhit_count=sum(1 for b in bbes if b.is_hardhit),
-            barrel_count=sum(1 for b in bbes if b.is_barrel),
-            avg_la=avg_la,
-            sweet_spot_count=sum(1 for b in bbes if b.is_sweet_spot),
-            avg_xba=avg_xba,
-            avg_xwoba=avg_xwoba,
-            avg_distance=avg_dist,
-            fb_count=sum(1 for b in bbes if b.bb_type == "fly_ball"),
-            ld_count=sum(1 for b in bbes if b.bb_type == "line_drive"),
-            gb_count=sum(1 for b in bbes if b.bb_type == "ground_ball"),
-            bunt_count=sum(1 for b in bbes if b.bb_type == "bunt"),
-            popup_count=sum(1 for b in bbes if b.bb_type == "popup"),
-            bbe_count=n,
-        ))
+        results.append(
+            _GameStat(
+                player_id=pid,
+                game_pk=pk,
+                date=gd,
+                avg_ev=avg_ev,
+                hardhit_count=sum(1 for b in bbes if b.is_hardhit),
+                barrel_count=sum(1 for b in bbes if b.is_barrel),
+                avg_la=avg_la,
+                sweet_spot_count=sum(1 for b in bbes if b.is_sweet_spot),
+                avg_xba=avg_xba,
+                avg_xwoba=avg_xwoba,
+                avg_distance=avg_dist,
+                fb_count=sum(1 for b in bbes if b.bb_type == "fly_ball"),
+                ld_count=sum(1 for b in bbes if b.bb_type == "line_drive"),
+                gb_count=sum(1 for b in bbes if b.bb_type == "ground_ball"),
+                bunt_count=sum(1 for b in bbes if b.bb_type == "bunt"),
+                popup_count=sum(1 for b in bbes if b.bb_type == "popup"),
+                bbe_count=n,
+            )
+        )
 
     results.sort(key=lambda x: (x.player_id, x.date))
     return results
@@ -382,8 +405,17 @@ def _compute_per_game_stats(
 
 
 class _BBE:
-    __slots__ = ("ev", "la", "xba", "xwoba", "distance", "bb_type",
-                 "is_hardhit", "is_barrel", "is_sweet_spot")
+    __slots__ = (
+        "ev",
+        "la",
+        "xba",
+        "xwoba",
+        "distance",
+        "bb_type",
+        "is_hardhit",
+        "is_barrel",
+        "is_sweet_spot",
+    )
 
     def __init__(self, **kw: Any) -> None:
         for k, v in kw.items():
@@ -413,12 +445,18 @@ def _parse_bbe(row: dict[str, str]) -> _BBE | None:
         distance=distance or 0.0,
         bb_type=bb_type,
         is_hardhit=ev >= _HARD_HIT_MIN_EV,
-        is_barrel=(ev >= _BARREL_MIN_EV and la is not None
-                   and _BARREL_MIN_LA <= la <= _BARREL_MAX_LA)
-        if la is not None else False,
-        is_sweet_spot=(la is not None and _SWEET_SPOT_MIN_LA <= la
-                       <= _SWEET_SPOT_MAX_LA)
-        if la is not None else False,
+        is_barrel=(
+            ev >= _BARREL_MIN_EV
+            and la is not None
+            and _BARREL_MIN_LA <= la <= _BARREL_MAX_LA
+        )
+        if la is not None
+        else False,
+        is_sweet_spot=(
+            la is not None and _SWEET_SPOT_MIN_LA <= la <= _SWEET_SPOT_MAX_LA
+        )
+        if la is not None
+        else False,
     )
 
 

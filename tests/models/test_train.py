@@ -28,6 +28,7 @@ class TestBuildModel:
             model = _build_model(mt, seed=42)
             assert model is not None
             import numpy as np
+
             x = np.array([[0.0], [1.0]])
             y = np.array([0, 1])
             model.fit(x, y)
@@ -37,6 +38,7 @@ class TestBuildModel:
     def test_mlx_build_and_smoke(self):
         # MLX needs more data for meaningful training
         import numpy as np
+
         model = _build_model("mlx", seed=42, params={"epochs": 5, "hidden_dims": (4,)})
         rng = np.random.RandomState(0)
         x = rng.randn(20, 3).astype(np.float32)
@@ -84,7 +86,10 @@ class TestWalkForwardSplit:
 
 
 def _feature_row(
-    player_id: int, game_pk: int, d: str, feat_val: float = 0.5,
+    player_id: int,
+    game_pk: int,
+    d: str,
+    feat_val: float = 0.5,
 ) -> dict:
     return {
         "player_id": player_id,
@@ -95,7 +100,10 @@ def _feature_row(
 
 
 def _target_row(
-    player_id: int, game_pk: int, d: str, hits: int = 0,
+    player_id: int,
+    game_pk: int,
+    d: str,
+    hits: int = 0,
 ) -> dict:
     return {
         "player_id": player_id,
@@ -113,21 +121,18 @@ def _make_dates(n: int) -> list[date]:
 
 
 def _interspersed_feature_targets(
-    n: int, noise: float = 0.3,
+    n: int,
+    noise: float = 0.3,
 ) -> tuple[list[dict], list[dict]]:
     """Generate feature/target rows with interspersed classes."""
     feat = []
     tgt = []
     for i, d in enumerate(_make_dates(n)):
         # Alternate positive/negative so any fold has both classes
-        is_positive = (i % 2 == 0)
+        is_positive = i % 2 == 0
         feat_val = 0.5 + (noise if is_positive else -noise)
-        feat.append(
-            _feature_row(1, 100 + i, d.isoformat(), feat_val=feat_val)
-        )
-        tgt.append(
-            _target_row(1, 100 + i, d.isoformat(), hits=1 if is_positive else 0)
-        )
+        feat.append(_feature_row(1, 100 + i, d.isoformat(), feat_val=feat_val))
+        tgt.append(_target_row(1, 100 + i, d.isoformat(), hits=1 if is_positive else 0))
     return feat, tgt
 
 
@@ -136,8 +141,13 @@ class TestTuneHyperparameters:
         feat, tgt = _interspersed_feature_targets(60)
         grid = {"C": [0.1, 1.0, 10.0]}
         result = tune_hyperparameters(
-            feat, tgt, target_col="target_0.5", model_type="lr",
-            param_grid=grid, n_trials=3, n_splits=2,
+            feat,
+            tgt,
+            target_col="target_0.5",
+            model_type="lr",
+            param_grid=grid,
+            n_trials=3,
+            n_splits=2,
         )
         assert "best_params" in result
         assert "best_score" in result
@@ -149,12 +159,24 @@ class TestTuneHyperparameters:
         feat, tgt = _interspersed_feature_targets(60)
         grid = {"C": [0.1, 1.0]}
         result = tune_hyperparameters(
-            feat, tgt, target_col="target_0.5", model_type="lr",
-            param_grid=grid, n_trials=2, n_splits=2,
+            feat,
+            tgt,
+            target_col="target_0.5",
+            model_type="lr",
+            param_grid=grid,
+            n_trials=2,
+            n_splits=2,
         )
         assert set(result.keys()) >= {
-            "best_params", "best_score", "best_std", "trials",
-            "target_col", "model_type", "metric", "n_trials", "n_splits",
+            "best_params",
+            "best_score",
+            "best_std",
+            "trials",
+            "target_col",
+            "model_type",
+            "metric",
+            "n_trials",
+            "n_splits",
         }
         assert result["target_col"] == "target_0.5"
         assert result["model_type"] == "lr"
@@ -164,8 +186,14 @@ class TestTuneHyperparameters:
         feat, tgt = _interspersed_feature_targets(60)
         grid = {"C": [0.1, 1.0]}
         result = tune_hyperparameters(
-            feat, tgt, target_col="target_0.5", model_type="lr",
-            param_grid=grid, n_trials=2, n_splits=2, metric="log_loss",
+            feat,
+            tgt,
+            target_col="target_0.5",
+            model_type="lr",
+            param_grid=grid,
+            n_trials=2,
+            n_splits=2,
+            metric="log_loss",
         )
         assert result["metric"] == "log_loss"
         assert result["best_score"] > 0.0
@@ -184,8 +212,13 @@ class TestTuneHyperparameters:
         feat, tgt = _interspersed_feature_targets(60)
         grid = {"n_estimators": [50, 100], "max_depth": [3, 5]}
         result = tune_hyperparameters(
-            feat, tgt, target_col="target_0.5", model_type="xgb",
-            param_grid=grid, n_trials=2, n_splits=2,
+            feat,
+            tgt,
+            target_col="target_0.5",
+            model_type="xgb",
+            param_grid=grid,
+            n_trials=2,
+            n_splits=2,
         )
         assert result["model_type"] == "xgb"
         assert "n_estimators" in result["best_params"]

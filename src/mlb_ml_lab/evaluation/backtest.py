@@ -87,9 +87,7 @@ def walk_forward_predict(
     dates = [row["date"] for row in merged]
     feat_cols = _feature_columns(merged)
 
-    x_all = np.array(
-        [[row[c] for c in feat_cols] for row in merged], dtype=np.float64
-    )
+    x_all = np.array([[row[c] for c in feat_cols] for row in merged], dtype=np.float64)
     y_all = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")
@@ -177,9 +175,7 @@ def simulate_bets(
     daily = _daily_profits(predictions, profits, min_prob)
     mdd = max_drawdown(daily)
     predicted_probs = [
-        gp.predicted_prob
-        for gp in predictions
-        if gp.predicted_prob >= min_prob
+        gp.predicted_prob for gp in predictions if gp.predicted_prob >= min_prob
     ]
     pred_mean = float(np.mean(predicted_probs)) if predicted_probs else 0.0
 
@@ -271,10 +267,10 @@ def expected_calibration_error(
     total = sum(b["count"] for b in buckets)
     if total == 0:
         return 0.0
-    ece = sum(
-        b["count"] * abs(b["observed_freq"] - b["mean_predicted"])
-        for b in buckets
-    ) / total
+    ece = (
+        sum(b["count"] * abs(b["observed_freq"] - b["mean_predicted"]) for b in buckets)
+        / total
+    )
     return round(ece, 4)
 
 
@@ -313,8 +309,9 @@ def print_backtest_report(
         print(f"  Model:           {result.model_type}")
     if result.n_seasons:
         print(f"  Seasons:         {result.n_seasons}")
-    print(f"  Odds:            {result.avg_odds:.3f} "
-          f"(breakeven: {result.threshold:.3f})")
+    print(
+        f"  Odds:            {result.avg_odds:.3f} (breakeven: {result.threshold:.3f})"
+    )
     print(f"  Stake/bet:       ${result.stake_per_bet:.2f}")
     print(f"  Min probability: {result.threshold:.3f}")
     print(sep)
@@ -324,9 +321,11 @@ def print_backtest_report(
     print(f"  Win rate:        {result.win_rate:.3f}")
     print(f"  Total stake:     ${result.total_stake:.2f}")
     print(f"  Total profit:    ${result.total_profit:.2f}")
-    print(f"  ROI:             {result.roi:+.4f} ({result.roi*100:+.2f}%)")
-    print(f"  Max drawdown:    {result.max_drawdown:.4f} "
-          f"({result.max_drawdown*100:.2f}%)")
+    print(f"  ROI:             {result.roi:+.4f} ({result.roi * 100:+.2f}%)")
+    print(
+        f"  Max drawdown:    {result.max_drawdown:.4f} "
+        f"({result.max_drawdown * 100:.2f}%)"
+    )
     print(f"  Avg prob:        {result.predicted_prob_mean:.4f}")
     print(sep)
 
@@ -363,9 +362,7 @@ def _daily_profits(
     threshold: float,
 ) -> list[float]:
     """Aggregate bet-level profits into daily cumulative profits."""
-    bet_dates = [
-        gp.date for gp in predictions if gp.predicted_prob >= threshold
-    ]
+    bet_dates = [gp.date for gp in predictions if gp.predicted_prob >= threshold]
     daily_pnl: dict[date, float] = {}
     for d, p in zip(bet_dates, bet_profits):
         daily_pnl[d] = daily_pnl.get(d, 0.0) + p

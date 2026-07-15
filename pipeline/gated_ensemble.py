@@ -40,12 +40,18 @@ SEED = 42
 ENSEMBLE_DIR = "data/models/gated_ensemble"
 
 _TUNED_XGB = {
-    "n_estimators": 500, "max_depth": 5, "learning_rate": 0.01,
-    "subsample": 0.8, "colsample_bytree": 1.0, "min_child_weight": 1,
+    "n_estimators": 500,
+    "max_depth": 5,
+    "learning_rate": 0.01,
+    "subsample": 0.8,
+    "colsample_bytree": 1.0,
+    "min_child_weight": 1,
 }
 
 
-def _merge_rows(feat_rows: list[dict], tgt_rows: list[dict], target_col: str) -> list[dict]:
+def _merge_rows(
+    feat_rows: list[dict], tgt_rows: list[dict], target_col: str
+) -> list[dict]:
     merged: list[dict] = []
     for fr, tr in zip(feat_rows, tgt_rows):
         row = dict(fr)
@@ -55,7 +61,9 @@ def _merge_rows(feat_rows: list[dict], tgt_rows: list[dict], target_col: str) ->
 
 
 def _extract_xgb(
-    merged_rows: list[dict], target_col: str, cols: list[str] | None = None,
+    merged_rows: list[dict],
+    target_col: str,
+    cols: list[str] | None = None,
     imputer: SimpleImputer | None = None,
 ) -> tuple[np.ndarray, np.ndarray, list[str], SimpleImputer]:
     if cols is None:
@@ -78,16 +86,23 @@ def _extract_xgb(
 def main() -> None:
     print(f"Loading data from {CACHED_DATASET}...")
     raw_logs = load_game_logs(CACHED_DATASET)
-    feature_matrix, targets_list, meta = load_feature_data(CACHED_DATASET)
-    print(f"  {len(raw_logs)} game logs, {len(feature_matrix)} feature rows, "
-          f"{len(targets_list)} targets")
+    feature_matrix, targets_list, _meta = load_feature_data(CACHED_DATASET)
+    print(
+        f"  {len(raw_logs)} game logs, {len(feature_matrix)} feature rows, "
+        f"{len(targets_list)} targets"
+    )
 
     game_logs: list[PlayerGameLog] = []
     for d in raw_logs:
-        game_logs.append(PlayerGameLog(**{
-            k: v for k, v in d.items()
-            if k in PlayerGameLog.__dataclass_fields__
-        }))
+        game_logs.append(
+            PlayerGameLog(
+                **{
+                    k: v
+                    for k, v in d.items()
+                    if k in PlayerGameLog.__dataclass_fields__
+                }
+            )
+        )
 
     targets: list[dict] = targets_list
     features: list[dict] = feature_matrix
@@ -123,27 +138,47 @@ def main() -> None:
             train_cutoff = TRAIN_SEASONS[fold_idx]
             test_season = TRAIN_SEASONS[fold_idx + 1]
 
-            train_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
-                          if int(t["date"][:4]) <= train_cutoff]
-            test_logs = [lg for lg, t in zip(aligned_logs, aligned_tgts)
-                         if int(t["date"][:4]) == test_season]
+            train_logs = [
+                lg
+                for lg, t in zip(aligned_logs, aligned_tgts)
+                if int(t["date"][:4]) <= train_cutoff
+            ]
+            test_logs = [
+                lg
+                for lg, t in zip(aligned_logs, aligned_tgts)
+                if int(t["date"][:4]) == test_season
+            ]
             train_tgt = [t for t in aligned_tgts if int(t["date"][:4]) <= train_cutoff]
             test_tgt = [t for t in aligned_tgts if int(t["date"][:4]) == test_season]
-            train_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
-                          if int(t["date"][:4]) <= train_cutoff]
-            test_feat = [f for f, t in zip(aligned_feats, aligned_tgts)
-                         if int(t["date"][:4]) == test_season]
+            train_feat = [
+                f
+                for f, t in zip(aligned_feats, aligned_tgts)
+                if int(t["date"][:4]) <= train_cutoff
+            ]
+            test_feat = [
+                f
+                for f, t in zip(aligned_feats, aligned_tgts)
+                if int(t["date"][:4]) == test_season
+            ]
 
             print(f"\n  Fold {fold_idx + 1}: train ≤{train_cutoff}, test={test_season}")
             print(f"    Train: {len(train_logs)} logs, {len(train_feat)} features")
             print(f"    Test:  {len(test_logs)} logs, {len(test_feat)} features")
 
             Xs_tr, Xc_tr, y_tr, sm, ss, fm, fs = build_hybrid_sequences(
-                train_logs, train_feat, train_tgt, target_col=target_col,
+                train_logs,
+                train_feat,
+                train_tgt,
+                target_col=target_col,
             )
             Xs_te, Xc_te, y_te, _, _, _, _ = build_hybrid_sequences(
-                test_logs, test_feat, test_tgt,
-                stats_mean=sm, stats_std=ss, feat_mean=fm, feat_std=fs,
+                test_logs,
+                test_feat,
+                test_tgt,
+                stats_mean=sm,
+                stats_std=ss,
+                feat_mean=fm,
+                feat_std=fs,
                 target_col=target_col,
             )
             if len(Xs_tr) == 0 or len(Xs_te) == 0:
@@ -155,10 +190,14 @@ def main() -> None:
             test_merged = _merge_rows(test_feat, test_tgt, target_col)
 
             x_train, y_tr_xgb, _xgb_cols, xgb_imputer = _extract_xgb(
-                train_merged, target_col,
+                train_merged,
+                target_col,
             )
             x_test, y_te_xgb, _, _ = _extract_xgb(
-                test_merged, target_col, cols=_xgb_cols, imputer=xgb_imputer,
+                test_merged,
+                target_col,
+                cols=_xgb_cols,
+                imputer=xgb_imputer,
             )
             print(f"    XGB train: {len(x_train)}, test: {len(x_test)}")
 
@@ -168,10 +207,16 @@ def main() -> None:
 
             # Gated hybrid
             gated_model, _ = train_hybrid_model(
-                Xs_tr, Xc_tr, y_tr,
-                hidden_dim=64, n_layers=2, dropout=0.2,
+                Xs_tr,
+                Xc_tr,
+                y_tr,
+                hidden_dim=64,
+                n_layers=2,
+                dropout=0.2,
                 use_gating=True,
-                learning_rate=1e-3, epochs=60, batch_size=512,
+                learning_rate=1e-3,
+                epochs=60,
+                batch_size=512,
                 verbose=False,
             )
             hybrid_te_proba = predict_hybrid_model(gated_model, Xs_te, Xc_te)
@@ -180,15 +225,21 @@ def main() -> None:
             hybrid_pred = (hybrid_te_proba > 0.5).astype(np.int32)
 
             xgb_metrics = classification_metrics(
-                y_te_xgb.tolist(), xgb_pred.tolist(), xgb_te_proba.tolist(),
+                y_te_xgb.tolist(),
+                xgb_pred.tolist(),
+                xgb_te_proba.tolist(),
             )
             hybrid_metrics = classification_metrics(
-                y_te.tolist(), hybrid_pred.tolist(), hybrid_te_proba.tolist(),
+                y_te.tolist(),
+                hybrid_pred.tolist(),
+                hybrid_te_proba.tolist(),
             )
 
             xgb_proba_map: dict[tuple[int, int], float] = {}
             for i, row in enumerate(test_merged):
-                xgb_proba_map[(row["player_id"], row["game_pk"])] = float(xgb_te_proba[i])
+                xgb_proba_map[(row["player_id"], row["game_pk"])] = float(
+                    xgb_te_proba[i]
+                )
 
             _keys_te: list[tuple[int, int]] = []
             _feat_idx: dict[tuple[int, int], dict] = {}
@@ -199,7 +250,7 @@ def main() -> None:
             for i, lg in enumerate(test_logs):
                 _grouped[(lg.player_id, str(lg.season))].append((i, lg))
 
-            for (pid, season), entries in _grouped.items():
+            for (pid, _season), entries in _grouped.items():
                 entries.sort(key=lambda e: e[1].date)
                 indices = [e[0] for e in entries]
                 vecs = [_feat_vec(e[1]) for e in entries]
@@ -217,7 +268,9 @@ def main() -> None:
 
             ensemble_pred = (np.array(_ensemble_probas) > 0.5).astype(np.int32)
             ens_metrics = classification_metrics(
-                y_te.tolist(), ensemble_pred.tolist(), _ensemble_probas,
+                y_te.tolist(),
+                ensemble_pred.tolist(),
+                _ensemble_probas,
             )
 
             fold_result = {
@@ -231,19 +284,27 @@ def main() -> None:
             }
             all_results.append(fold_result)
 
-            print(f"    XGB     AUC: {fold_result['xgb_auc']:.4f}  "
-                  f"Acc: {fold_result['xgb_acc']:.4f}")
-            print(f"    Gated   AUC: {fold_result['hybrid_auc']:.4f}  "
-                  f"Acc: {fold_result['hybrid_acc']:.4f}")
-            print(f"    Ensemble AUC: {fold_result['ensemble_auc']:.4f}  "
-                  f"Acc: {fold_result['ensemble_acc']:.4f}")
+            print(
+                f"    XGB     AUC: {fold_result['xgb_auc']:.4f}  "
+                f"Acc: {fold_result['xgb_acc']:.4f}"
+            )
+            print(
+                f"    Gated   AUC: {fold_result['hybrid_auc']:.4f}  "
+                f"Acc: {fold_result['hybrid_acc']:.4f}"
+            )
+            print(
+                f"    Ensemble AUC: {fold_result['ensemble_auc']:.4f}  "
+                f"Acc: {fold_result['ensemble_acc']:.4f}"
+            )
 
         if all_results:
             print(f"\n  === {target_col} Summary ===")
             for r in all_results:
-                print(f"    Fold {r['fold']}: XGB={r['xgb_auc']:.4f}  "
-                      f"Gated={r['hybrid_auc']:.4f}  "
-                      f"Ensemble={r['ensemble_auc']:.4f}")
+                print(
+                    f"    Fold {r['fold']}: XGB={r['xgb_auc']:.4f}  "
+                    f"Gated={r['hybrid_auc']:.4f}  "
+                    f"Ensemble={r['ensemble_auc']:.4f}"
+                )
             avg_xgb = float(np.mean([r["xgb_auc"] for r in all_results]))
             avg_hybrid = float(np.mean([r["hybrid_auc"] for r in all_results]))
             avg_ens = float(np.mean([r["ensemble_auc"] for r in all_results]))
@@ -260,7 +321,10 @@ def main() -> None:
     all_merged = _merge_rows(aligned_feats, aligned_tgts, target_col)
     x_all, y_all, xgb_cols, xgb_imputer = _extract_xgb(all_merged, target_col)
     Xs, Xc, y, sm, ss, fm, fs = build_hybrid_sequences(
-        aligned_logs, aligned_feats, aligned_tgts, target_col=target_col,
+        aligned_logs,
+        aligned_feats,
+        aligned_tgts,
+        target_col=target_col,
     )
     print(f"  XGB train: {len(x_all)}, Gated train: {len(Xs)}")
 
@@ -268,10 +332,17 @@ def main() -> None:
     final_xgb.fit(x_all, y_all)
 
     final_hybrid, hybrid_meta = train_hybrid_model(
-        Xs, Xc, y,
-        hidden_dim=64, n_layers=2, dropout=0.2,
+        Xs,
+        Xc,
+        y,
+        hidden_dim=64,
+        n_layers=2,
+        dropout=0.2,
         use_gating=True,
-        learning_rate=1e-3, epochs=90, batch_size=512, verbose=True,
+        learning_rate=1e-3,
+        epochs=90,
+        batch_size=512,
+        verbose=True,
     )
 
     os.makedirs(ENSEMBLE_DIR, exist_ok=True)
@@ -280,7 +351,12 @@ def main() -> None:
     joblib.dump(xgb_imputer, os.path.join(ENSEMBLE_DIR, "xgb_imputer.joblib"))
 
     save_hybrid_model(
-        final_hybrid, ENSEMBLE_DIR, sm, ss, fm, fs,
+        final_hybrid,
+        ENSEMBLE_DIR,
+        sm,
+        ss,
+        fm,
+        fs,
         metadata=hybrid_meta,
     )
 
@@ -293,7 +369,7 @@ def main() -> None:
         "target_col": target_col,
         "train_seasons": TRAIN_SEASONS,
     }
-    with open(os.path.join(ENSEMBLE_DIR, "ensemble.json"), "w") as f:
+    with open(os.path.join(ENSEMBLE_DIR, "ensemble.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
 
     print(f"  Ensemble saved to {ENSEMBLE_DIR}")

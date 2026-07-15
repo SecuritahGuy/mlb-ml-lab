@@ -90,13 +90,10 @@ def client_with_fixtures(tmp_path) -> MlbClient:
     seeds = {
         "/teams?sportId=1": "teams.json",
         "/teams/108/roster?season=2025&rosterType=40Man": "angels_roster_2025.json",
-        "/people/545361/stats?stats=gameLog&group=hitting&season=2025":
-            "trout_gamelog_2025.json",
+        "/people/545361/stats?stats=gameLog&group=hitting&season=2025": "trout_gamelog_2025.json",
         "/game/778554/feed/live?": None,
-        "savant:/leaderboard/statcast?csv=true&min=q&type=batter&year=2025":
-            "statcast_batters_2025.csv",
-        "savant:/leaderboard/expected_statistics?csv=true&min=q&type=batter&year=2025":
-            "expected_stats_2025.csv",
+        "savant:/leaderboard/statcast?csv=true&min=q&type=batter&year=2025": "statcast_batters_2025.csv",  # pylint: disable=line-too-long
+        "savant:/leaderboard/expected_statistics?csv=true&min=q&type=batter&year=2025": "expected_stats_2025.csv",  # pylint: disable=line-too-long
     }
 
     for cache_key, fixture_name in seeds.items():

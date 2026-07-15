@@ -45,13 +45,15 @@ class GamePaceFeature(FeatureExtractor):
         rows: list[dict[str, Any]] = []
         for log in game_logs:
             p = pace.get(log.opponent_id, {})
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "opp_pace_time_per_game": p.get("time_per_game"),
-                "opp_pace_pitches_per_game": p.get("pitches_per_game"),
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "opp_pace_time_per_game": p.get("time_per_game"),
+                    "opp_pace_pitches_per_game": p.get("pitches_per_game"),
+                }
+            )
 
         return rows
 

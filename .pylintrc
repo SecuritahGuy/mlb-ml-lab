@@ -19,6 +19,19 @@ disable=
     W0221,   # arguments-differ (extract(**kwargs) pattern is intentional)
     R0801,   # duplicate-code (alias for duplicate-code)
     R0904,   # too-many-public-methods (MlbClient is intentionally a broad facade)
+    I1101,   # c-extension-no-member — mlx.core is a C extension; static analysis can't resolve members
+    E1101,   # no-member — PlayerGameLog is a dataclass; __dataclass_fields__ is generated at runtime
+    R0402,   # consider-using-from-import — import mlx.nn as nn is idiomatic
+    C0302,   # too-many-lines — sequence.py is long but logically cohesive
+    C0415,   # import-outside-toplevel — lazy imports are intentional in some modules
+    R1702,   # too-many-nested-blocks — harvest_dataset is unavoidably nested data scraping
+    W0106,   # expression-not-assigned — deliberate side-effect expressions
 
 [FORMAT]
 max-line-length=100
+
+# ML naming conventions — X/y for features/targets, X-prefixed for transformed data
+# _UPPER_CASE for config-like locals (e.g. _TUNED_XGB)
+good-names=X,y,i,j,k,n,_
+variable-rgx=^(_?[a-z_][a-z0-9_]*|_[A-Z][A-Z0-9_]*|X[a-z0-9_]*|best_[A-Z])$
+argument-rgx=^(_?[a-z_][a-z0-9_]*|X[a-z0-9_]*)$

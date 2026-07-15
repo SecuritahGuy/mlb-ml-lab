@@ -93,15 +93,17 @@ class TeamTrendFeatures(FeatureExtractor):
             opp_hits_l5 = _avg_opp_hits(opp_before, opp_game_hits, 5)
             opp_hits_l10 = _avg_opp_hits(opp_before, opp_game_hits, 10)
 
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "team_hits_last_5": hits_l5,
-                "team_hits_last_10": hits_l10,
-                "team_opp_hits_last_5": opp_hits_l5,
-                "team_opp_hits_last_10": opp_hits_l10,
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "team_hits_last_5": hits_l5,
+                    "team_hits_last_10": hits_l10,
+                    "team_opp_hits_last_5": opp_hits_l5,
+                    "team_opp_hits_last_10": opp_hits_l10,
+                }
+            )
 
         return rows
 

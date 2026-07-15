@@ -63,22 +63,26 @@ class TeamPitchingFeatures(FeatureExtractor):
             ),
         ]
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         pitching: dict[int, dict[str, float]] | None = kwargs.get("opponent_pitching")
 
         rows: list[dict[str, Any]] = []
         for log in game_logs:
             opp_stats = (pitching or {}).get(log.opponent_id, {}) if pitching else {}
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "opp_era": opp_stats.get("era"),
-                "opp_k_per_9": opp_stats.get("k_per_9"),
-                "opp_whip": opp_stats.get("whip"),
-                "opp_ba_against": opp_stats.get("ba_against"),
-                "opp_hr_per_9": opp_stats.get("hr_per_9"),
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "opp_era": opp_stats.get("era"),
+                    "opp_k_per_9": opp_stats.get("k_per_9"),
+                    "opp_whip": opp_stats.get("whip"),
+                    "opp_ba_against": opp_stats.get("ba_against"),
+                    "opp_hr_per_9": opp_stats.get("hr_per_9"),
+                }
+            )
         return rows
 
 
@@ -117,7 +121,9 @@ class RollingOpponentPitching(FeatureExtractor):
             ),
         ]
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         # Build game records grouped by opponent
         games_by_opp: dict[int, list[_GameRecord]] = defaultdict(list)
         for log in game_logs:
@@ -146,19 +152,25 @@ class RollingOpponentPitching(FeatureExtractor):
             points: list[_RollingPoint] = []
             for i, g in enumerate(games):
                 if i > 0 and cum_pa > 0:
-                    points.append(_RollingPoint(
-                        date=g.date,
-                        k_rate=cum_k / cum_pa,
-                        ba_against=cum_h / cum_pa,
-                        walk_rate=cum_bb / cum_pa,
-                        sample_games=i,
-                    ))
+                    points.append(
+                        _RollingPoint(
+                            date=g.date,
+                            k_rate=cum_k / cum_pa,
+                            ba_against=cum_h / cum_pa,
+                            walk_rate=cum_bb / cum_pa,
+                            sample_games=i,
+                        )
+                    )
                 else:
-                    points.append(_RollingPoint(
-                        date=g.date, k_rate=None,
-                        ba_against=None, walk_rate=None,
-                        sample_games=0,
-                    ))
+                    points.append(
+                        _RollingPoint(
+                            date=g.date,
+                            k_rate=None,
+                            ba_against=None,
+                            walk_rate=None,
+                            sample_games=0,
+                        )
+                    )
                 cum_k += g.strikeouts
                 cum_bb += g.walks
                 cum_h += g.hits
@@ -175,15 +187,17 @@ class RollingOpponentPitching(FeatureExtractor):
             point = points[idx] if idx < len(points) else _RollingPoint()
             next_idx[log.opponent_id] = idx + 1
 
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "rolling_opp_k_rate": point.k_rate,
-                "rolling_opp_ba_against": point.ba_against,
-                "rolling_opp_walk_rate": point.walk_rate,
-                "rolling_opp_sample_games": point.sample_games,
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "rolling_opp_k_rate": point.k_rate,
+                    "rolling_opp_ba_against": point.ba_against,
+                    "rolling_opp_walk_rate": point.walk_rate,
+                    "rolling_opp_sample_games": point.sample_games,
+                }
+            )
         return rows
 
 
@@ -191,8 +205,13 @@ class _GameRecord:
     __slots__ = ("date", "hits", "at_bats", "walks", "strikeouts", "plate_appearances")
 
     def __init__(
-        self, date: str, hits: int, at_bats: int,
-        walks: int, strikeouts: int, plate_appearances: int,
+        self,
+        date: str,
+        hits: int,
+        at_bats: int,
+        walks: int,
+        strikeouts: int,
+        plate_appearances: int,
     ) -> None:
         self.date = date
         self.hits = hits
@@ -206,9 +225,12 @@ class _RollingPoint:
     __slots__ = ("date", "k_rate", "ba_against", "walk_rate", "sample_games")
 
     def __init__(
-        self, date: str = "", k_rate: float | None = None,
+        self,
+        date: str = "",
+        k_rate: float | None = None,
         ba_against: float | None = None,
-        walk_rate: float | None = None, sample_games: int = 0,
+        walk_rate: float | None = None,
+        sample_games: int = 0,
     ) -> None:
         self.date = date
         self.k_rate = k_rate
@@ -234,24 +256,36 @@ class MonthlyTeamPitchingFeatures(FeatureExtractor):
     @property
     def features(self) -> list[FeatureMeta]:
         return [
-            FeatureMeta(name="mth_opp_era",
-                        description="Opponent ERA through month before game",
-                        source="matchup"),
-            FeatureMeta(name="mth_opp_k_per_9",
-                        description="Opponent K/9 through month before game",
-                        source="matchup"),
-            FeatureMeta(name="mth_opp_whip",
-                        description="Opponent WHIP through month before game",
-                        source="matchup"),
-            FeatureMeta(name="mth_opp_ba_against",
-                        description="Opponent BAA through month before game",
-                        source="matchup"),
-            FeatureMeta(name="mth_opp_games",
-                        description="Monthly splits aggregated",
-                        source="matchup"),
+            FeatureMeta(
+                name="mth_opp_era",
+                description="Opponent ERA through month before game",
+                source="matchup",
+            ),
+            FeatureMeta(
+                name="mth_opp_k_per_9",
+                description="Opponent K/9 through month before game",
+                source="matchup",
+            ),
+            FeatureMeta(
+                name="mth_opp_whip",
+                description="Opponent WHIP through month before game",
+                source="matchup",
+            ),
+            FeatureMeta(
+                name="mth_opp_ba_against",
+                description="Opponent BAA through month before game",
+                source="matchup",
+            ),
+            FeatureMeta(
+                name="mth_opp_games",
+                description="Monthly splits aggregated",
+                source="matchup",
+            ),
         ]
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         monthly: dict[int, list[dict[str, Any]]] | None = kwargs.get("monthly_pitching")
 
         rows: list[dict[str, Any]] = []
@@ -289,16 +323,18 @@ class MonthlyTeamPitchingFeatures(FeatureExtractor):
                 if estimated_bf > 0:
                     baa = _round3(total_h / estimated_bf)
 
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "mth_opp_era": era,
-                "mth_opp_k_per_9": k9,
-                "mth_opp_whip": whip,
-                "mth_opp_ba_against": baa,
-                "mth_opp_games": count,
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "mth_opp_era": era,
+                    "mth_opp_k_per_9": k9,
+                    "mth_opp_whip": whip,
+                    "mth_opp_ba_against": baa,
+                    "mth_opp_games": count,
+                }
+            )
         return rows
 
 
@@ -318,31 +354,41 @@ class TeamDefenseFeatures(FeatureExtractor):
     @property
     def features(self) -> list[FeatureMeta]:
         return [
-            FeatureMeta(name="opp_fielding_pct",
-                        description="Opponent team fielding percentage",
-                        source="matchup"),
-            FeatureMeta(name="opp_errors",
-                        description="Opponent team total errors",
-                        source="matchup"),
-            FeatureMeta(name="opp_double_plays",
-                        description="Opponent team double plays turned",
-                        source="matchup"),
+            FeatureMeta(
+                name="opp_fielding_pct",
+                description="Opponent team fielding percentage",
+                source="matchup",
+            ),
+            FeatureMeta(
+                name="opp_errors",
+                description="Opponent team total errors",
+                source="matchup",
+            ),
+            FeatureMeta(
+                name="opp_double_plays",
+                description="Opponent team double plays turned",
+                source="matchup",
+            ),
         ]
 
-    def extract(self, game_logs: list[PlayerGameLog], **kwargs: Any) -> list[dict[str, Any]]:
+    def extract(
+        self, game_logs: list[PlayerGameLog], **kwargs: Any
+    ) -> list[dict[str, Any]]:
         fielding: dict[int, dict[str, Any]] | None = kwargs.get("team_fielding")
 
         rows: list[dict[str, Any]] = []
         for log in game_logs:
             fd = (fielding or {}).get(log.opponent_id, {}) if fielding else {}
-            rows.append({
-                "player_id": log.player_id,
-                "game_pk": log.game_pk,
-                "date": log.date,
-                "opp_fielding_pct": _float_or_none(fd.get("fieldingPct")),
-                "opp_errors": _float_or_none(fd.get("errors")),
-                "opp_double_plays": _float_or_none(fd.get("doublePlays")),
-            })
+            rows.append(
+                {
+                    "player_id": log.player_id,
+                    "game_pk": log.game_pk,
+                    "date": log.date,
+                    "opp_fielding_pct": _float_or_none(fd.get("fieldingPct")),
+                    "opp_errors": _float_or_none(fd.get("errors")),
+                    "opp_double_plays": _float_or_none(fd.get("doublePlays")),
+                }
+            )
         return rows
 
 

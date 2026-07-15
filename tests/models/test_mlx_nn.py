@@ -24,6 +24,7 @@ class TestHitPredictor:
     def test_forward_pass_shape(self):
         model = HitPredictor(n_features=10, hidden_dims=(8, 4))
         import mlx.core as mx
+
         x = mx.random.normal((32, 10))
         y = model(x)
         assert y.shape == (32, 1)
@@ -39,7 +40,9 @@ class TestHitPredictor:
         # use_batch_norm=False => exactly 3 Linear layers (5→8, 8→4, 4→1)
         # with no BatchNorm weights/bias mixed into the parameter count.
         model = HitPredictor(
-            n_features=5, hidden_dims=(8, 4), use_batch_norm=False,
+            n_features=5,
+            hidden_dims=(8, 4),
+            use_batch_norm=False,
         )
         params = model.parameters()
         flat = _flatten_params(params)
@@ -55,7 +58,10 @@ class TestHitPredictor:
 
 
 def _synthetic_data(
-    n: int = 200, n_features: int = 5, seed: int = 42, bias: float = 0.0,
+    n: int = 200,
+    n_features: int = 5,
+    seed: int = 42,
+    bias: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.RandomState(seed)
     X = rng.randn(n, n_features).astype(np.float32)
@@ -67,7 +73,10 @@ class TestMlxNNClassifier:
     def test_fit_and_predict(self):
         X, y = _synthetic_data(200)
         clf = MlxNNClassifier(
-            hidden_dims=(16, 8), epochs=30, batch_size=32, seed=42,
+            hidden_dims=(16, 8),
+            epochs=30,
+            batch_size=32,
+            seed=42,
         )
         clf.fit(X, y)
         assert clf.model_ is not None
@@ -115,7 +124,9 @@ class TestMlxNNClassifier:
         clf1.fit(X, y)
         clf2.fit(X, y)
         np.testing.assert_allclose(
-            clf1.predict_proba(X), clf2.predict_proba(X), atol=1e-5,
+            clf1.predict_proba(X),
+            clf2.predict_proba(X),
+            atol=1e-5,
         )
 
     def test_different_seed_different_probs(self):
@@ -138,6 +149,7 @@ class TestMlxNNClassifier:
 class TestFlattenParams:
     def test_flattens_nested_dict(self):
         import mlx.core as mx
+
         params = {
             "net": {
                 "layers": [

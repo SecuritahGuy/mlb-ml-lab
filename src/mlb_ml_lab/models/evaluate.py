@@ -45,15 +45,11 @@ def classification_metrics(
     if y_proba is not None:
         y_proba_a = np.asarray(y_proba, dtype=np.float64)
         try:
-            result["auc"] = float(
-                roc_auc_score(y_true_a, y_proba_a)
-            )
+            result["auc"] = float(roc_auc_score(y_true_a, y_proba_a))
         except ValueError:
             result["auc"] = float("nan")
         try:
-            result["log_loss"] = float(
-                log_loss(y_true_a, y_proba_a)
-            )
+            result["log_loss"] = float(log_loss(y_true_a, y_proba_a))
         except ValueError:
             result["log_loss"] = float("nan")
         result["brier"] = float(brier_score_loss(y_true_a, y_proba_a))

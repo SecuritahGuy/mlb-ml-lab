@@ -146,20 +146,16 @@ class MlbClient:
                     continue
                 teams_data = game.get("teams", {}) or {}
                 dt = game.get("datetime", {}) or {}
-                home_team = (teams_data.get("home", {}) or {})
-                away_team = (teams_data.get("away", {}) or {})
+                home_team = teams_data.get("home", {}) or {}
+                away_team = teams_data.get("away", {}) or {}
                 lookup[pk] = {
                     "game_pk": pk,
                     "game_datetime": game.get("gameDate"),
                     "day_night": game.get("dayNight") or dt.get("dayNight"),
                     "venue_id": (game.get("venue") or {}).get("id"),
                     "venue_name": (game.get("venue") or {}).get("name"),
-                    "home_team_id": (
-                        (home_team.get("team", {}) or {}).get("id")
-                    ),
-                    "away_team_id": (
-                        (away_team.get("team", {}) or {}).get("id")
-                    ),
+                    "home_team_id": ((home_team.get("team", {}) or {}).get("id")),
+                    "away_team_id": ((away_team.get("team", {}) or {}).get("id")),
                     "home_probable_pitcher_id": (
                         (home_team.get("probablePitcher", {}) or {}).get("id")
                     ),
@@ -338,7 +334,8 @@ class MlbClient:
             data = self._get(
                 f"/teams/{tid}/stats",
                 params={
-                    "season": season, "group": "pitching",
+                    "season": season,
+                    "group": "pitching",
                     "stats": "gameLog",
                 },
             )
@@ -380,9 +377,7 @@ class MlbClient:
     # Standings
     # ------------------------------------------------------------------
 
-    def get_standings(
-        self, season: int, league_id: int = 103
-    ) -> list[dict[str, Any]]:
+    def get_standings(self, season: int, league_id: int = 103) -> list[dict[str, Any]]:
         """Fetch division standings for a league.
 
         Args:
@@ -492,14 +487,18 @@ class MlbClient:
     # Baseball Savant CSV endpoints (statcast)
     # ------------------------------------------------------------------
 
-    def get_statcast_batters(self, season: int, min_qual: str = "q") -> list[dict[str, str]]:
+    def get_statcast_batters(
+        self, season: int, min_qual: str = "q"
+    ) -> list[dict[str, str]]:
         """Fetch statcast batters leaderboard (barrel %, exit velo, launch angle)."""
         return self._fetch_savant_csv(
             "/leaderboard/statcast",
             params={"type": "batter", "year": season, "min": min_qual, "csv": "true"},
         )
 
-    def get_expected_stats(self, season: int, min_qual: str = "q") -> list[dict[str, str]]:
+    def get_expected_stats(
+        self, season: int, min_qual: str = "q"
+    ) -> list[dict[str, str]]:
         """Fetch expected stats leaderboard (xBA, xSLG, xwOBA)."""
         return self._fetch_savant_csv(
             "/leaderboard/expected_statistics",
@@ -542,9 +541,7 @@ class MlbClient:
     # Team Bullpen Stats (reliever-only pitching)
     # ------------------------------------------------------------------
 
-    def get_team_bullpen_stats(
-        self, team_id: int, season: int
-    ) -> dict[str, float]:
+    def get_team_bullpen_stats(self, team_id: int, season: int) -> dict[str, float]:
         """Fetch bullpen (reliever-only) pitching stats for a team.
 
         Identifies relievers via ``gamesStarted / gamesPlayed < 0.5``,
@@ -556,7 +553,8 @@ class MlbClient:
         """
         roster = self.get_roster(team_id, season, roster_type="40Man")
         pitcher_ids = [
-            p["person"]["id"] for p in roster
+            p["person"]["id"]
+            for p in roster
             if (p.get("position") or {}).get("abbreviation") == "P"
         ]
 
