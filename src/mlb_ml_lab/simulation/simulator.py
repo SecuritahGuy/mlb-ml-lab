@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import os
 from collections import defaultdict
 from typing import Any
 
@@ -10,8 +8,6 @@ import numpy as np
 from mlb_ml_lab.simulation.outcomes import (
     OUTCOME_CLASSES,
     blend_outcomes,
-    load_outcome_distributions,
-    load_pbp_dataset,
 )
 
 # Average runs scored directly on each play type (from PBP data)

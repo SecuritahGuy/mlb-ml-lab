@@ -4,9 +4,7 @@ import json
 import os
 from collections import defaultdict, Counter
 
-import numpy as np
 
-from mlb_ml_lab.data.schemas import PlateAppearance
 
 OUTCOME_CLASSES = [
     "single",

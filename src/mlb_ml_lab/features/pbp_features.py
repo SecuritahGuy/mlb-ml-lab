@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import json
-import os
-from collections import defaultdict, deque
-from typing import Any
+from collections import deque
 
 import numpy as np
 
@@ -14,8 +12,21 @@ OUTCOME_TO_CLASS = {oc: i for i, oc in enumerate(OUTCOME_CLASSES)}
 BATTER_WINDOWS = [10, 20, 50, 100]
 PITCHER_WINDOWS = [20, 50, 100]
 
+PLATOON_FEATURES = ["batter_hand_R", "batter_hand_L", "pitcher_hand_R", "pitcher_hand_L", "platoon_advantage"]
+
 
 _PA_SAMPLE_RATE = 1.0  # can reduce for faster dev
+
+_handedness: dict[int, dict[str, str]] | None = None
+
+
+def _load_handedness(path: str = "data/simulation/player_handedness.json") -> dict[int, dict[str, str]]:
+    global _handedness
+    if _handedness is None:
+        with open(path) as f:
+            raw = json.load(f)
+        _handedness = {int(k): v for k, v in raw.items()}
+    return _handedness
 
 
 def _window_key(prefix: str, window: int, outcome: str) -> str:
@@ -26,7 +37,7 @@ def _window_count_key(prefix: str, window: int) -> str:
     return f"{prefix}_last{window}_count"
 
 
-def _all_feature_names(include_context: bool = True) -> list[str]:
+def _all_feature_names(include_context: bool = True, include_platoon: bool = True) -> list[str]:
     names: list[str] = []
     for w in BATTER_WINDOWS:
         for o in OUTCOME_CLASSES:
@@ -36,6 +47,8 @@ def _all_feature_names(include_context: bool = True) -> list[str]:
         for o in OUTCOME_CLASSES:
             names.append(_window_key("pitcher", w, o))
         names.append(_window_count_key("pitcher", w))
+    if include_platoon:
+        names.extend(PLATOON_FEATURES)
     if include_context:
         names.extend(["half_inning_top", "inning", "outs_before", "balls", "strikes"])
     return names
@@ -46,6 +59,7 @@ def compute_pbp_features(
     game_dates: dict[int, str],
     sample_rate: float = 1.0,
     include_context: bool = True,
+    include_platoon: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, list[str], list[int]]:
     """Compute rolling features for every PA in the dataset.
 
@@ -74,7 +88,7 @@ def compute_pbp_features(
     batter_windows: dict[int, dict[int, deque[str]]] = {}
     pitcher_windows: dict[int, dict[int, deque[str]]] = {}
 
-    feature_names = _all_feature_names(include_context=include_context)
+    feature_names = _all_feature_names(include_context=include_context, include_platoon=include_platoon)
     n_features = len(feature_names)
 
     X_list: list[np.ndarray] = []
@@ -116,6 +130,22 @@ def compute_pbp_features(
             features[col + len(OUTCOME_CLASSES)] = float(cnt)
             col += len(OUTCOME_CLASSES) + 1
 
+        if include_platoon:
+            hd = _load_handedness()
+            bh = hd.get(bid, {"batSide": "?"})["batSide"]
+            ph = hd.get(pid, {"pitchHand": "?"})["pitchHand"]
+            features[col] = 1.0 if bh == "R" else 0.0
+            features[col + 1] = 1.0 if bh == "L" else 0.0
+            features[col + 2] = 1.0 if ph == "R" else 0.0
+            features[col + 3] = 1.0 if ph == "L" else 0.0
+            if bh == "S" or bh == "?":
+                features[col + 4] = 1.0
+            elif ph == "?" or ph == "S":
+                features[col + 4] = 0.0
+            else:
+                features[col + 4] = 1.0 if bh != ph else 0.0
+            col += len(PLATOON_FEATURES)
+
         if include_context:
             features[col] = 1.0 if pa.get("half_inning") == "top" else 0.0
             features[col + 1] = float(pa.get("inning", 1))
@@ -137,11 +167,12 @@ def compute_pbp_features(
 class RollingState:
     """Maintain rolling windows and produce feature vectors for any matchup."""
 
-    def __init__(self, game_dates: dict[int, str]):
+    def __init__(self, game_dates: dict[int, str], handedness_path: str = "data/simulation/player_handedness.json"):
         self.game_dates = game_dates
         self.batter_windows: dict[int, dict[int, deque[str]]] = {}
         self.pitcher_windows: dict[int, dict[int, deque[str]]] = {}
         self._processed: set[int] = set()
+        self._handedness = _load_handedness(handedness_path)
 
     def replay_until(self, pas: list[dict], target_date: str) -> None:
         """Replay all PAs before *target_date* to populate rolling windows."""
@@ -169,12 +200,14 @@ class RollingState:
         balls: int = 0,
         strikes: int = 0,
         include_context: bool = False,
+        include_platoon: bool = True,
     ) -> np.ndarray:
         """Build feature vector for a batter-pitcher matchup."""
         n_bat = len(BATTER_WINDOWS) * (len(OUTCOME_CLASSES) + 1)
         n_pit = len(PITCHER_WINDOWS) * (len(OUTCOME_CLASSES) + 1)
+        n_plt = len(PLATOON_FEATURES) if include_platoon else 0
         n_ctx = 5 if include_context else 0
-        features = np.zeros(n_bat + n_pit + n_ctx, dtype=np.float64)
+        features = np.zeros(n_bat + n_pit + n_plt + n_ctx, dtype=np.float64)
 
         col = 0
         for w in BATTER_WINDOWS:
@@ -194,6 +227,22 @@ class RollingState:
                 features[col + oi] = rate
             features[col + len(OUTCOME_CLASSES)] = float(cnt)
             col += len(OUTCOME_CLASSES) + 1
+
+        if include_platoon:
+            hd = self._handedness
+            bh = hd.get(batter_id, {"batSide": "?"})["batSide"]
+            ph = hd.get(pitcher_id, {"pitchHand": "?"})["pitchHand"]
+            features[col] = 1.0 if bh == "R" else 0.0
+            features[col + 1] = 1.0 if bh == "L" else 0.0
+            features[col + 2] = 1.0 if ph == "R" else 0.0
+            features[col + 3] = 1.0 if ph == "L" else 0.0
+            if bh == "S" or bh == "?":
+                features[col + 4] = 1.0
+            elif ph == "?" or ph == "S":
+                features[col + 4] = 0.0
+            else:
+                features[col + 4] = 1.0 if bh != ph else 0.0
+            col += len(PLATOON_FEATURES)
 
         if include_context:
             features[col] = 1.0 if half_inning == "top" else 0.0

@@ -94,7 +94,6 @@ def compute_re24_from_plays(
 
     for play in plays:
         result = play.get("result", {}) or {}
-        about = play.get("about", {}) or {}
         runners = play.get("runners", []) or []
         count = play.get("count", {}) or {}
 
@@ -147,7 +146,6 @@ def compute_re24_game_method(
 
     for play in game_plays_list:
         result = play.get("result", {}) or {}
-        about = play.get("about", {}) or {}
         runners = play.get("runners", []) or []
         count = play.get("count", {}) or {}
 
