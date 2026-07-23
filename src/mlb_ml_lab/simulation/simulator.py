@@ -10,6 +10,9 @@ from mlb_ml_lab.simulation.outcomes import (
     blend_outcomes,
 )
 
+_CLASS_TO_INDEX = {c: i for i, c in enumerate(OUTCOME_CLASSES)}
+_INDEX_TO_CLASS = {i: c for i, c in enumerate(OUTCOME_CLASSES)}
+
 # Average runs scored directly on each play type (from PBP data)
 DEFAULT_RUNS_PER_OUTCOME = {
     "single": 0.38,
@@ -170,3 +173,146 @@ def simulate_game(
         "away_runs": away_runs,
         "total_runs": home_runs + away_runs,
     }
+
+
+class MonteCarloSimulator:
+    """Game simulator using Monte Carlo sampling from an ML model's
+    predicted PA-outcome distribution.
+
+    Simulates 9 innings per team, sampling each PA outcome from the
+    model's probability vector, tracking outs via empirical out rates,
+    and accumulating runs.
+
+    Parameters
+    ----------
+    model : xgb.XGBClassifier
+        Trained multiclass PA outcome model.
+    rolling_state : RollingState
+        Pre-populated rolling statistics (call ``replay_until`` first).
+    runs_per_outcome : np.ndarray
+        Array of shape (n_classes,) — expected runs for each outcome.
+    out_probs : np.ndarray
+        Array of shape (n_classes,) — probability a PA of that type
+        results in an out.
+    n_simulations : int
+        Number of Monte Carlo trials per game call.
+    rng : int or numpy.random.Generator, optional
+    """
+
+    def __init__(
+        self,
+        model: Any,
+        rolling_state: Any,
+        runs_per_outcome: np.ndarray | None = None,
+        out_probs: np.ndarray | None = None,
+        n_simulations: int = 1000,
+        rng: int | np.random.Generator | None = None,
+    ) -> None:
+        self.model = model
+        self.rs = rolling_state
+        self.n = n_simulations
+        self.rng = np.random.default_rng(rng)
+
+        if runs_per_outcome is not None:
+            self.runs = np.asarray(runs_per_outcome, dtype=np.float64)
+        else:
+            self.runs = np.array(
+                [0.38, 0.65, 0.96, 1.44, 0.17, 0.0, 0.02], dtype=np.float64
+            )
+
+        if out_probs is not None:
+            self.out_probs = np.asarray(out_probs, dtype=np.float64)
+        else:
+            self.out_probs = np.array(
+                [0.0164, 0.0138, 0.0019, 0.0, 0.0004, 0.999, 0.8848],
+                dtype=np.float64,
+            )
+
+    def simulate(
+        self,
+        batting_order: list[int],
+        pitcher_id: int,
+        game_pk: int,
+        half_inning: str = "top",
+    ) -> np.ndarray:
+        """Run *n* Monte Carlo simulations for one team's half of a game.
+
+        Returns array of total runs scored, shape ``(n_simulations,)``.
+        """
+        results = np.empty(self.n, dtype=np.float64)
+        for i in range(self.n):
+            results[i] = self._sim_one_team(batting_order, pitcher_id, game_pk, half_inning)
+        return results
+
+    def simulate_game(
+        self,
+        home_order: list[int],
+        away_order: list[int],
+        home_pitcher: int,
+        away_pitcher: int,
+        game_pk: int,
+    ) -> dict[str, Any]:
+        """Simulate a full game.
+
+        Returns dict with ``home_runs``, ``away_runs``, ``total_runs``
+        arrays (one per simulation) plus summary stats.
+        """
+        away = self.simulate(away_order, away_pitcher, game_pk, "top")
+        home = self.simulate(home_order, home_pitcher, game_pk, "bottom")
+        total = away + home
+
+        def _stats(arr: np.ndarray) -> dict[str, float]:
+            return {
+                "mean": float(arr.mean()),
+                "std": float(arr.std()),
+                "p5": float(np.percentile(arr, 5)),
+                "p25": float(np.percentile(arr, 25)),
+                "p50": float(np.percentile(arr, 50)),
+                "p75": float(np.percentile(arr, 75)),
+                "p95": float(np.percentile(arr, 95)),
+            }
+
+        return {
+            "home_runs": home,
+            "away_runs": away,
+            "total_runs": total,
+            "home": _stats(home),
+            "away": _stats(away),
+            "total": _stats(total),
+        }
+
+    def _sim_one_team(
+        self,
+        order: list[int],
+        pitcher_id: int,
+        game_pk: int,
+        half_inning: str,
+    ) -> float:
+        total = 0.0
+        for inning in range(9):
+            outs = 0
+            bi = inning
+            while outs < 3:
+                bid = order[bi % len(order)]
+                bi += 1
+
+                fv = self.rs.feature_vector(
+                    bid, pitcher_id,
+                    half_inning=half_inning,
+                    inning=inning + 1,
+                    outs_before=outs,
+                    balls=0,
+                    strikes=0,
+                    include_platoon=True,
+                    include_game_context=True,
+                    include_game_log=True,
+                    game_pk=game_pk,
+                )
+                proba = self.model.predict_proba(fv.reshape(1, -1))[0]
+                outcome = int(self.rng.multinomial(1, proba).argmax())
+
+                total += self.runs[outcome]
+
+                if self.rng.random() < self.out_probs[outcome]:
+                    outs += 1
+        return total
