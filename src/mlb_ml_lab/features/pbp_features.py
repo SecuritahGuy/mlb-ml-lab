@@ -12,6 +12,12 @@ OUTCOME_TO_CLASS = {oc: i for i, oc in enumerate(OUTCOME_CLASSES)}
 BATTER_WINDOWS = [10, 20, 50, 100]
 PITCHER_WINDOWS = [20, 50, 100]
 
+BATTER_GAME_WINDOWS = [5, 20]
+PITCHER_GAME_WINDOWS = [5, 20]
+
+BATTER_GAME_METRICS = ["hits", "hr", "bb", "k"]
+PITCHER_GAME_METRICS = ["h_allowed", "hr_allowed", "bb_allowed", "k"]
+
 PLATOON_FEATURES = ["batter_hand_R", "batter_hand_L", "pitcher_hand_R", "pitcher_hand_L", "platoon_advantage"]
 
 GAME_CONTEXT_FEATURES = ["park_wOBA", "park_HR", "temp", "wind_speed", "indoor"]
@@ -49,7 +55,16 @@ def _window_count_key(prefix: str, window: int) -> str:
     return f"{prefix}_last{window}_count"
 
 
-def _all_feature_names(include_context: bool = True, include_platoon: bool = True, include_game_context: bool = True) -> list[str]:
+def _game_window_key(prefix: str, window: int, metric: str) -> str:
+    return f"{prefix}_last{window}_games_{metric}_rate"
+
+
+def _game_window_count_key(prefix: str, window: int) -> str:
+    return f"{prefix}_last{window}_games_count"
+
+
+def _all_feature_names(include_context: bool = True, include_platoon: bool = True,
+                       include_game_context: bool = True, include_game_log: bool = True) -> list[str]:
     names: list[str] = []
     for w in BATTER_WINDOWS:
         for o in OUTCOME_CLASSES:
@@ -63,9 +78,24 @@ def _all_feature_names(include_context: bool = True, include_platoon: bool = Tru
         names.extend(PLATOON_FEATURES)
     if include_game_context:
         names.extend(GAME_CONTEXT_FEATURES)
+    if include_game_log:
+        for w in BATTER_GAME_WINDOWS:
+            for m in BATTER_GAME_METRICS:
+                names.append(_game_window_key("batter", w, m))
+            names.append(_game_window_count_key("batter", w))
+        for w in PITCHER_GAME_WINDOWS:
+            for m in PITCHER_GAME_METRICS:
+                names.append(_game_window_key("pitcher", w, m))
+            names.append(_game_window_count_key("pitcher", w))
     if include_context:
         names.extend(["half_inning_top", "inning", "outs_before", "balls", "strikes"])
     return names
+
+
+_HIT_EVENTS = {"single", "double", "triple", "home_run"}
+_HR_EVENT = {"home_run"}
+_BB_EVENT = {"walk"}
+_K_EVENT = {"strikeout"}
 
 
 def compute_pbp_features(
@@ -75,6 +105,7 @@ def compute_pbp_features(
     include_context: bool = True,
     include_platoon: bool = True,
     include_game_context: bool = True,
+    include_game_log: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, list[str], list[int]]:
     """Compute rolling features for every PA in the dataset.
 
@@ -103,7 +134,12 @@ def compute_pbp_features(
     batter_windows: dict[int, dict[int, deque[str]]] = {}
     pitcher_windows: dict[int, dict[int, deque[str]]] = {}
 
-    feature_names = _all_feature_names(include_context=include_context, include_platoon=include_platoon, include_game_context=include_game_context)
+    batter_game_windows: dict[int, dict[int, deque[dict]]] = {}
+    pitcher_game_windows: dict[int, dict[int, deque[dict]]] = {}
+    current_gpk: int | None = None
+    game_accums: dict[int, dict[str, float]] = {}
+
+    feature_names = _all_feature_names(include_context=include_context, include_platoon=include_platoon, include_game_context=include_game_context, include_game_log=include_game_log)
     n_features = len(feature_names)
 
     X_list: list[np.ndarray] = []
@@ -112,8 +148,19 @@ def compute_pbp_features(
 
     total = len(dated_pas)
     for i, (date, pa) in enumerate(dated_pas):
+        gpk = pa["game_pk"]
+
+        # Detect game change → flush completed game stats to per-player game windows
+        if include_game_log and current_gpk is not None and gpk != current_gpk:
+            _flush_game_accums(game_accums, batter_game_windows, pitcher_game_windows)
+            game_accums = {}
+
+        current_gpk = gpk
+
         if sample_rate < 1.0 and np.random.random() > sample_rate:
             _update_windows(batter_windows, pitcher_windows, pa)
+            if include_game_log:
+                _update_game_accums(game_accums, pa)
             continue
 
         if (i + 1) % 50000 == 0:
@@ -172,6 +219,24 @@ def compute_pbp_features(
             features[col + 4] = float(ctx.get("indoor", 0.0))
             col += len(GAME_CONTEXT_FEATURES)
 
+        if include_game_log:
+            for w in BATTER_GAME_WINDOWS:
+                gh = batter_game_windows.get(bid, {}).get(w, deque())
+                ng = len(gh)
+                for mi, m in enumerate(BATTER_GAME_METRICS):
+                    val = sum(g.get("b_" + m, 0) for g in gh)
+                    features[col + mi] = val / max(ng, 1)
+                features[col + len(BATTER_GAME_METRICS)] = float(ng)
+                col += len(BATTER_GAME_METRICS) + 1
+            for w in PITCHER_GAME_WINDOWS:
+                gh = pitcher_game_windows.get(pid, {}).get(w, deque())
+                ng = len(gh)
+                for mi, m in enumerate(PITCHER_GAME_METRICS):
+                    val = sum(g.get("p_" + m, 0) for g in gh)
+                    features[col + mi] = val / max(ng, 1)
+                features[col + len(PITCHER_GAME_METRICS)] = float(ng)
+                col += len(PITCHER_GAME_METRICS) + 1
+
         if include_context:
             features[col] = 1.0 if pa.get("half_inning") == "top" else 0.0
             features[col + 1] = float(pa.get("inning", 1))
@@ -184,10 +249,60 @@ def compute_pbp_features(
         gpk_list.append(pa["game_pk"])
 
         _update_windows(batter_windows, pitcher_windows, pa)
+        if include_game_log:
+            _update_game_accums(game_accums, pa)
+
+    # Flush last game
+    if include_game_log and game_accums:
+        _flush_game_accums(game_accums, batter_game_windows, pitcher_game_windows)
 
     X = np.array(X_list, dtype=np.float64)
     y = np.array(y_list, dtype=np.int32)
     return X, y, feature_names, gpk_list
+
+
+def _update_game_accums(accums: dict[int, dict], pa: dict) -> None:
+    bid = pa["batter_id"]
+    pid = pa["pitcher_id"]
+    et = pa["event_type"]
+
+    for player_id in (bid, pid):
+        if player_id not in accums:
+            accums[player_id] = {
+                "b_hits": 0, "b_hr": 0, "b_bb": 0, "b_k": 0, "b_pa": 0,
+                "p_h_allowed": 0, "p_hr_allowed": 0, "p_bb_allowed": 0, "p_k": 0, "p_pa_faced": 0,
+            }
+    ba = accums[bid]
+    pa_acc = accums[pid]
+
+    if et in _HIT_EVENTS:
+        ba["b_hits"] += 1
+        pa_acc["p_h_allowed"] += 1
+    if et in _HR_EVENT:
+        ba["b_hr"] += 1
+        pa_acc["p_hr_allowed"] += 1
+    if et in _BB_EVENT:
+        ba["b_bb"] += 1
+        pa_acc["p_bb_allowed"] += 1
+    if et in _K_EVENT:
+        ba["b_k"] += 1
+        pa_acc["p_k"] += 1
+    ba["b_pa"] += 1
+    pa_acc["p_pa_faced"] += 1
+
+
+def _flush_game_accums(
+    accums: dict[int, dict],
+    batter_game_windows: dict[int, dict[int, deque[dict]]],
+    pitcher_game_windows: dict[int, dict[int, deque[dict]]],
+) -> None:
+    for pid, stats in accums.items():
+        for w in BATTER_GAME_WINDOWS:
+            gw = batter_game_windows.setdefault(pid, {}).setdefault(w, deque(maxlen=w))
+            gw.append(dict(stats))
+        for w in PITCHER_GAME_WINDOWS:
+            gw = pitcher_game_windows.setdefault(pid, {}).setdefault(w, deque(maxlen=w))
+            gw.append(dict(stats))
 
 
 class RollingState:
@@ -198,6 +313,8 @@ class RollingState:
         self.game_dates = game_dates
         self.batter_windows: dict[int, dict[int, deque[str]]] = {}
         self.pitcher_windows: dict[int, dict[int, deque[str]]] = {}
+        self.batter_game_windows: dict[int, dict[int, deque[dict]]] = {}
+        self.pitcher_game_windows: dict[int, dict[int, deque[dict]]] = {}
         self._processed: set[int] = set()
         self._handedness = _load_handedness(handedness_path)
         self._game_context = _load_game_context(game_context_path)
@@ -214,9 +331,19 @@ class RollingState:
                 dated.append((date, pa))
 
         dated.sort(key=lambda x: (x[0], x[1]["game_pk"], x[1]["at_bat_index"]))
+        current_gpk: int | None = None
+        game_accums: dict[int, dict] = {}
         for date, pa in dated:
+            gpk = pa["game_pk"]
+            if current_gpk is not None and gpk != current_gpk:
+                _flush_game_accums(game_accums, self.batter_game_windows, self.pitcher_game_windows)
+                game_accums = {}
+            current_gpk = gpk
             _update_windows(self.batter_windows, self.pitcher_windows, pa)
+            _update_game_accums(game_accums, pa)
             self._processed.add(pa["game_pk"])
+        if game_accums:
+            _flush_game_accums(game_accums, self.batter_game_windows, self.pitcher_game_windows)
 
     def feature_vector(
         self,
@@ -230,6 +357,7 @@ class RollingState:
         include_context: bool = False,
         include_platoon: bool = True,
         include_game_context: bool = True,
+        include_game_log: bool = True,
         game_pk: int = 0,
     ) -> np.ndarray:
         """Build feature vector for a batter-pitcher matchup."""
@@ -237,8 +365,10 @@ class RollingState:
         n_pit = len(PITCHER_WINDOWS) * (len(OUTCOME_CLASSES) + 1)
         n_plt = len(PLATOON_FEATURES) if include_platoon else 0
         n_gcx = len(GAME_CONTEXT_FEATURES) if include_game_context else 0
+        n_gl = (len(BATTER_GAME_WINDOWS) * (len(BATTER_GAME_METRICS) + 1)
+                + len(PITCHER_GAME_WINDOWS) * (len(PITCHER_GAME_METRICS) + 1)) if include_game_log else 0
         n_ctx = 5 if include_context else 0
-        features = np.zeros(n_bat + n_pit + n_plt + n_gcx + n_ctx, dtype=np.float64)
+        features = np.zeros(n_bat + n_pit + n_plt + n_gcx + n_gl + n_ctx, dtype=np.float64)
 
         col = 0
         for w in BATTER_WINDOWS:
@@ -284,6 +414,24 @@ class RollingState:
             features[col + 3] = float(ctx.get("wind_speed", 0.0))
             features[col + 4] = float(ctx.get("indoor", 0.0))
             col += len(GAME_CONTEXT_FEATURES)
+
+        if include_game_log:
+            for w in BATTER_GAME_WINDOWS:
+                gh = self.batter_game_windows.get(batter_id, {}).get(w, deque())
+                ng = len(gh)
+                for mi, m in enumerate(BATTER_GAME_METRICS):
+                    val = sum(g.get("b_" + m, 0) for g in gh)
+                    features[col + mi] = val / max(ng, 1)
+                features[col + len(BATTER_GAME_METRICS)] = float(ng)
+                col += len(BATTER_GAME_METRICS) + 1
+            for w in PITCHER_GAME_WINDOWS:
+                gh = self.pitcher_game_windows.get(pitcher_id, {}).get(w, deque())
+                ng = len(gh)
+                for mi, m in enumerate(PITCHER_GAME_METRICS):
+                    val = sum(g.get("p_" + m, 0) for g in gh)
+                    features[col + mi] = val / max(ng, 1)
+                features[col + len(PITCHER_GAME_METRICS)] = float(ng)
+                col += len(PITCHER_GAME_METRICS) + 1
 
         if include_context:
             features[col] = 1.0 if half_inning == "top" else 0.0
