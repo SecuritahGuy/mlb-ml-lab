@@ -9,6 +9,7 @@ import httpx
 
 from mlb_ml_lab.data.cache import DiskCache
 from mlb_ml_lab.data.rate_limiter import TokenBucket
+from mlb_ml_lab.data.schemas import PlateAppearance, parse_play
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +260,31 @@ class MlbClient:
             return {}
         splits = stats[0].get("splits", [])
         return splits[0].get("stat", {}) if splits else {}
+
+    # ------------------------------------------------------------------
+    # Play-by-play
+    # ------------------------------------------------------------------
+
+    def get_game_plays(
+        self, game_pk: int,
+    ) -> list[PlateAppearance]:
+        """Return every plate appearance for a completed game.
+
+        Fetches the v1.1 live game feed and parses ``allPlays`` into
+        structured ``PlateAppearance`` records.
+        """
+        data = self._get(f"/game/{game_pk}/feed/live", version="v1.1")
+        raw_plays = (
+            data.get("liveData", {})
+            .get("plays", {})
+            .get("allPlays", [])
+        )
+        result: list[PlateAppearance] = []
+        for p in raw_plays:
+            pa = parse_play(p, game_pk)
+            if pa is not None:
+                result.append(pa)
+        return result
 
     # ------------------------------------------------------------------
     # Team Stats

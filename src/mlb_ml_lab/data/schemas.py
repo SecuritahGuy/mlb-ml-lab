@@ -371,3 +371,88 @@ class PlayerGameLog:
             inherited_runners=int(stat.get("inheritedRunners", 0)),
             inherited_runners_scored=int(stat.get("inheritedRunnersScored", 0)),
         )
+
+
+@dataclass
+class PlateAppearance:
+    game_pk: int
+    at_bat_index: int
+    inning: int
+    half_inning: str
+    outs_before: int
+    balls: int
+    strikes: int
+    batter_id: int
+    batter_name: str
+    pitcher_id: int
+    pitcher_name: str
+    event: str
+    event_type: str
+    rbi: int
+    is_out: bool
+    home_score: int
+    away_score: int
+
+
+EVENT_TYPE_MAP: dict[str, str] = {
+    "single": "single",
+    "double": "double",
+    "triple": "triple",
+    "home_run": "home_run",
+    "walk": "walk",
+    "intent_walk": "walk",
+    "strikeout": "strikeout",
+    "strikeout_double_play": "strikeout",
+    "field_out": "field_out",
+    "force_out": "field_out",
+    "grounded_into_double_play": "field_out",
+    "grounded_into_triple_play": "field_out",
+    "fielders_choice": "field_out",
+    "fielders_choice_out": "field_out",
+    "sac_fly": "sacrifice",
+    "sac_fly_double_play": "sacrifice",
+    "sac_bunt": "sacrifice",
+    "sac_bunt_double_play": "sacrifice",
+    "hit_by_pitch": "hit_by_pitch",
+    "catcher_interf": "other",
+    "fan_interference": "other",
+    "field_error": "error",
+    "triple_play": "other",
+    "runner_out": "other",
+    "other_out": "other",
+}
+
+
+def parse_event_type(event_type: str) -> str:
+    return EVENT_TYPE_MAP.get(event_type, "other")
+
+
+def parse_play(play: dict[str, Any], game_pk: int) -> PlateAppearance | None:
+    result = play.get("result", {}) or {}
+    about = play.get("about", {}) or {}
+    count = play.get("count", {}) or {}
+    matchup = play.get("matchup", {}) or {}
+
+    event_type = result.get("eventType", "")
+    if not event_type:
+        return None
+
+    return PlateAppearance(
+        game_pk=game_pk,
+        at_bat_index=about.get("atBatIndex", 0),
+        inning=about.get("inning", 0),
+        half_inning="top" if about.get("isTopInning", True) else "bottom",
+        outs_before=count.get("outs", 0),
+        balls=count.get("balls", 0),
+        strikes=count.get("strikes", 0),
+        batter_id=(matchup.get("batter", {}) or {}).get("id", 0),
+        batter_name=(matchup.get("batter", {}) or {}).get("fullName", ""),
+        pitcher_id=(matchup.get("pitcher", {}) or {}).get("id", 0),
+        pitcher_name=(matchup.get("pitcher", {}) or {}).get("fullName", ""),
+        event=result.get("event", ""),
+        event_type=parse_event_type(event_type),
+        rbi=int(result.get("rbi", 0)),
+        is_out=result.get("isOut", False),
+        home_score=int(result.get("homeScore", 0) or 0),
+        away_score=int(result.get("awayScore", 0) or 0),
+    )
