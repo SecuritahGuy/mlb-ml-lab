@@ -50,6 +50,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 CACHED_DATASET_DEFAULT = "data/datasets/full_2021_2026_30teams"
 MODEL_DIR_DEFAULT = "data/models/final"
+ENSEMBLE_DIR_DEFAULT = "data/models/ensemble_0_5"
 PREDICT_SEASON_DEFAULT = 2026
 TRAIN_SEASONS_DEFAULT = [2021, 2022, 2023, 2024, 2025]
 
@@ -351,6 +352,9 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     print(f"Loading data from {args.dataset}...")
     feature_matrix, targets_list, _meta = load_feature_data(args.dataset)
 
+    # Support ensemble: comma-separated list of model types
+    model_types = [m.strip() for m in args.model.split(",")]
+
     for target_col in ("target_0.5", "target_1.5"):
         print(f"\n{'=' * 60}")
         print(f"Walk-forward — {target_col}")
@@ -360,7 +364,7 @@ def cmd_backtest(args: argparse.Namespace) -> None:
             feature_matrix,
             targets_list,
             target_col=target_col,
-            model_type=args.model,
+            model_type=model_types if len(model_types) > 1 else model_types[0],
             n_splits=args.folds,
         )
         if not predictions:
@@ -536,7 +540,8 @@ def build_parser() -> argparse.ArgumentParser:
     # backtest
     p_bt = sub.add_parser("backtest", help="Walk-forward backtest with betting simulation")
     p_bt.add_argument("--dataset", type=str, default=CACHED_DATASET_DEFAULT)
-    p_bt.add_argument("--model", type=str, default="lgb", choices=["lr", "xgb", "rf", "lgb"])
+    p_bt.add_argument("--model", type=str, default="lgb",
+                       help="Model type(s). Ensemble: comma-sep (e.g. 'lr,xgb,rf,lgb')")
     p_bt.add_argument("--folds", type=int, default=5)
     p_bt.add_argument("--odds", type=int, default=-110)
     p_bt.set_defaults(func=cmd_backtest)
@@ -556,7 +561,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_bet.add_argument("--date", type=str, default=None, help="Date (YYYY-MM-DD)")
     p_bet.add_argument("--threshold", type=float, default=0.55)
     p_bet.add_argument("--stake", type=float, default=1.0)
-    p_bet.add_argument("--model-dir", type=str, default="data/models/final_0_5_0_5")
+    p_bet.add_argument("--model-dir", type=str, default=ENSEMBLE_DIR_DEFAULT)
     p_bet.add_argument("--settle", action="store_true", help="Settle unsettled bets")
     p_bet.add_argument("--pnl", action="store_true", help="Show P&L summary")
     p_bet.set_defaults(func=cmd_bet)

@@ -9,6 +9,11 @@ from mlb_ml_lab.simulation.outcomes import OUTCOME_CLASSES
 
 OUTCOME_TO_CLASS = {oc: i for i, oc in enumerate(OUTCOME_CLASSES)}
 
+# Prior rates for Bayesian shrinkage (computed from 676K PAs)
+LEAGUE_OUTCOME_PRIORS = np.array(
+    [0.140, 0.044, 0.004, 0.031, 0.084, 0.226, 0.471], dtype=np.float64
+)
+
 BATTER_WINDOWS = [10, 20, 50, 100]
 PITCHER_WINDOWS = [20, 50, 100]
 
@@ -18,9 +23,20 @@ PITCHER_GAME_WINDOWS = [5, 20]
 BATTER_GAME_METRICS = ["hits", "hr", "bb", "k"]
 PITCHER_GAME_METRICS = ["h_allowed", "hr_allowed", "bb_allowed", "k"]
 
+# Per-PA rate metrics (summed over game, divided by total PAs)
+BATTER_GAME_RATE_METRICS = ["hits_per_pa", "hr_per_pa", "bb_per_pa", "k_per_pa"]
+PITCHER_GAME_RATE_METRICS = ["h_allowed_per_pa", "hr_allowed_per_pa", "bb_allowed_per_pa", "k_per_pa"]
+BATTER_GAME_RATE_KEYS = {"hits_per_pa": "b_hits", "hr_per_pa": "b_hr", "bb_per_pa": "b_bb", "k_per_pa": "b_k"}
+BATTER_GAME_RATE_DENOM = "b_pa"
+PITCHER_GAME_RATE_KEYS = {"h_allowed_per_pa": "p_h_allowed", "hr_allowed_per_pa": "p_hr_allowed", "bb_allowed_per_pa": "p_bb_allowed", "k_per_pa": "p_k"}
+PITCHER_GAME_RATE_DENOM = "p_pa_faced"
+
 PLATOON_FEATURES = ["batter_hand_R", "batter_hand_L", "pitcher_hand_R", "pitcher_hand_L", "platoon_advantage"]
 
 GAME_CONTEXT_FEATURES = ["park_wOBA", "park_HR", "temp", "wind_speed", "indoor"]
+
+# Bayesian shrinkage prior strength
+SHRINKAGE_K = 15
 
 _PA_SAMPLE_RATE = 1.0  # can reduce for faster dev
 
@@ -64,7 +80,8 @@ def _game_window_count_key(prefix: str, window: int) -> str:
 
 
 def _all_feature_names(include_context: bool = True, include_platoon: bool = True,
-                       include_game_context: bool = True, include_game_log: bool = True) -> list[str]:
+                       include_game_context: bool = True, include_game_log: bool = True,
+                       include_game_log_rates: bool = True) -> list[str]:
     names: list[str] = []
     for w in BATTER_WINDOWS:
         for o in OUTCOME_CLASSES:
@@ -87,6 +104,13 @@ def _all_feature_names(include_context: bool = True, include_platoon: bool = Tru
             for m in PITCHER_GAME_METRICS:
                 names.append(_game_window_key("pitcher", w, m))
             names.append(_game_window_count_key("pitcher", w))
+    if include_game_log_rates:
+        for w in BATTER_GAME_WINDOWS:
+            for m in BATTER_GAME_RATE_METRICS:
+                names.append(_game_window_key("batter", w, m))
+        for w in PITCHER_GAME_WINDOWS:
+            for m in PITCHER_GAME_RATE_METRICS:
+                names.append(_game_window_key("pitcher", w, m))
     if include_context:
         names.extend(["half_inning_top", "inning", "outs_before", "balls", "strikes"])
     return names
@@ -139,7 +163,11 @@ def compute_pbp_features(
     current_gpk: int | None = None
     game_accums: dict[int, dict[str, float]] = {}
 
-    feature_names = _all_feature_names(include_context=include_context, include_platoon=include_platoon, include_game_context=include_game_context, include_game_log=include_game_log)
+    feature_names = _all_feature_names(
+        include_context=include_context, include_platoon=include_platoon,
+        include_game_context=include_game_context, include_game_log=include_game_log,
+        include_game_log_rates=include_game_log,
+    )
     n_features = len(feature_names)
 
     X_list: list[np.ndarray] = []
@@ -174,11 +202,15 @@ def compute_pbp_features(
         features = np.zeros(n_features, dtype=np.float64)
         col = 0
 
+        prior = LEAGUE_OUTCOME_PRIORS
+        k = SHRINKAGE_K
+
         for w in BATTER_WINDOWS:
             hist = batter_windows.get(bid, {}).get(w, deque())
             cnt = len(hist)
             for oi, o in enumerate(OUTCOME_CLASSES):
-                rate = sum(1 for e in hist if e == o) / max(cnt, 1)
+                obs = sum(1 for e in hist if e == o)
+                rate = (obs + k * prior[oi]) / (cnt + k)
                 features[col + oi] = rate
             features[col + len(OUTCOME_CLASSES)] = float(cnt)
             col += len(OUTCOME_CLASSES) + 1
@@ -187,7 +219,8 @@ def compute_pbp_features(
             hist = pitcher_windows.get(pid, {}).get(w, deque())
             cnt = len(hist)
             for oi, o in enumerate(OUTCOME_CLASSES):
-                rate = sum(1 for e in hist if e == o) / max(cnt, 1)
+                obs = sum(1 for e in hist if e == o)
+                rate = (obs + k * prior[oi]) / (cnt + k)
                 features[col + oi] = rate
             features[col + len(OUTCOME_CLASSES)] = float(cnt)
             col += len(OUTCOME_CLASSES) + 1
@@ -228,6 +261,16 @@ def compute_pbp_features(
                     features[col + mi] = val / max(ng, 1)
                 features[col + len(BATTER_GAME_METRICS)] = float(ng)
                 col += len(BATTER_GAME_METRICS) + 1
+
+            # Per-PA rate features for batters
+            for w in BATTER_GAME_WINDOWS:
+                gh = batter_game_windows.get(bid, {}).get(w, deque())
+                total_pa = sum(g.get("b_pa", 0) for g in gh)
+                for mi, m in enumerate(BATTER_GAME_RATE_METRICS):
+                    num = sum(g.get(BATTER_GAME_RATE_KEYS[m], 0) for g in gh)
+                    features[col + mi] = num / max(total_pa, 1)
+                col += len(BATTER_GAME_RATE_METRICS)
+
             for w in PITCHER_GAME_WINDOWS:
                 gh = pitcher_game_windows.get(pid, {}).get(w, deque())
                 ng = len(gh)
@@ -236,6 +279,15 @@ def compute_pbp_features(
                     features[col + mi] = val / max(ng, 1)
                 features[col + len(PITCHER_GAME_METRICS)] = float(ng)
                 col += len(PITCHER_GAME_METRICS) + 1
+
+            # Per-PA rate features for pitchers
+            for w in PITCHER_GAME_WINDOWS:
+                gh = pitcher_game_windows.get(pid, {}).get(w, deque())
+                total_faced = sum(g.get("p_pa_faced", 0) for g in gh)
+                for mi, m in enumerate(PITCHER_GAME_RATE_METRICS):
+                    num = sum(g.get(PITCHER_GAME_RATE_KEYS[m], 0) for g in gh)
+                    features[col + mi] = num / max(total_faced, 1)
+                col += len(PITCHER_GAME_RATE_METRICS)
 
         if include_context:
             features[col] = 1.0 if pa.get("half_inning") == "top" else 0.0
@@ -358,6 +410,7 @@ class RollingState:
         include_platoon: bool = True,
         include_game_context: bool = True,
         include_game_log: bool = True,
+        include_game_log_rates: bool = True,
         game_pk: int = 0,
     ) -> np.ndarray:
         """Build feature vector for a batter-pitcher matchup."""
@@ -365,17 +418,27 @@ class RollingState:
         n_pit = len(PITCHER_WINDOWS) * (len(OUTCOME_CLASSES) + 1)
         n_plt = len(PLATOON_FEATURES) if include_platoon else 0
         n_gcx = len(GAME_CONTEXT_FEATURES) if include_game_context else 0
-        n_gl = (len(BATTER_GAME_WINDOWS) * (len(BATTER_GAME_METRICS) + 1)
-                + len(PITCHER_GAME_WINDOWS) * (len(PITCHER_GAME_METRICS) + 1)) if include_game_log else 0
+        n_gl = 0
+        if include_game_log:
+            n_gl += len(BATTER_GAME_WINDOWS) * (len(BATTER_GAME_METRICS) + 1)
+            n_gl += len(PITCHER_GAME_WINDOWS) * (len(PITCHER_GAME_METRICS) + 1)
+        n_glr = 0
+        if include_game_log_rates:
+            n_glr += len(BATTER_GAME_WINDOWS) * len(BATTER_GAME_RATE_METRICS)
+            n_glr += len(PITCHER_GAME_WINDOWS) * len(PITCHER_GAME_RATE_METRICS)
         n_ctx = 5 if include_context else 0
-        features = np.zeros(n_bat + n_pit + n_plt + n_gcx + n_gl + n_ctx, dtype=np.float64)
+        features = np.zeros(n_bat + n_pit + n_plt + n_gcx + n_gl + n_glr + n_ctx, dtype=np.float64)
+
+        prior = LEAGUE_OUTCOME_PRIORS
+        k = SHRINKAGE_K
 
         col = 0
         for w in BATTER_WINDOWS:
             hist = self.batter_windows.get(batter_id, {}).get(w, deque())
             cnt = len(hist)
             for oi, o in enumerate(OUTCOME_CLASSES):
-                rate = sum(1 for e in hist if e == o) / max(cnt, 1)
+                obs = sum(1 for e in hist if e == o)
+                rate = (obs + k * prior[oi]) / (cnt + k)
                 features[col + oi] = rate
             features[col + len(OUTCOME_CLASSES)] = float(cnt)
             col += len(OUTCOME_CLASSES) + 1
@@ -384,7 +447,8 @@ class RollingState:
             hist = self.pitcher_windows.get(pitcher_id, {}).get(w, deque())
             cnt = len(hist)
             for oi, o in enumerate(OUTCOME_CLASSES):
-                rate = sum(1 for e in hist if e == o) / max(cnt, 1)
+                obs = sum(1 for e in hist if e == o)
+                rate = (obs + k * prior[oi]) / (cnt + k)
                 features[col + oi] = rate
             features[col + len(OUTCOME_CLASSES)] = float(cnt)
             col += len(OUTCOME_CLASSES) + 1
@@ -424,6 +488,16 @@ class RollingState:
                     features[col + mi] = val / max(ng, 1)
                 features[col + len(BATTER_GAME_METRICS)] = float(ng)
                 col += len(BATTER_GAME_METRICS) + 1
+
+            if include_game_log_rates:
+                for w in BATTER_GAME_WINDOWS:
+                    gh = self.batter_game_windows.get(batter_id, {}).get(w, deque())
+                    total_pa = sum(g.get("b_pa", 0) for g in gh)
+                    for mi, m in enumerate(BATTER_GAME_RATE_METRICS):
+                        num = sum(g.get(BATTER_GAME_RATE_KEYS[m], 0) for g in gh)
+                        features[col + mi] = num / max(total_pa, 1)
+                    col += len(BATTER_GAME_RATE_METRICS)
+
             for w in PITCHER_GAME_WINDOWS:
                 gh = self.pitcher_game_windows.get(pitcher_id, {}).get(w, deque())
                 ng = len(gh)
@@ -432,6 +506,15 @@ class RollingState:
                     features[col + mi] = val / max(ng, 1)
                 features[col + len(PITCHER_GAME_METRICS)] = float(ng)
                 col += len(PITCHER_GAME_METRICS) + 1
+
+            if include_game_log_rates:
+                for w in PITCHER_GAME_WINDOWS:
+                    gh = self.pitcher_game_windows.get(pitcher_id, {}).get(w, deque())
+                    total_faced = sum(g.get("p_pa_faced", 0) for g in gh)
+                    for mi, m in enumerate(PITCHER_GAME_RATE_METRICS):
+                        num = sum(g.get(PITCHER_GAME_RATE_KEYS[m], 0) for g in gh)
+                        features[col + mi] = num / max(total_faced, 1)
+                    col += len(PITCHER_GAME_RATE_METRICS)
 
         if include_context:
             features[col] = 1.0 if half_inning == "top" else 0.0

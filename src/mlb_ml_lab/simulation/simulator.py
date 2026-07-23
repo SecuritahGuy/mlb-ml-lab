@@ -212,6 +212,7 @@ class MonteCarloSimulator:
         self.rs = rolling_state
         self.n = n_simulations
         self.rng = np.random.default_rng(rng)
+        self._n_classes = 7
 
         if runs_per_outcome is not None:
             self.runs = np.asarray(runs_per_outcome, dtype=np.float64)
@@ -228,22 +229,6 @@ class MonteCarloSimulator:
                 dtype=np.float64,
             )
 
-    def simulate(
-        self,
-        batting_order: list[int],
-        pitcher_id: int,
-        game_pk: int,
-        half_inning: str = "top",
-    ) -> np.ndarray:
-        """Run *n* Monte Carlo simulations for one team's half of a game.
-
-        Returns array of total runs scored, shape ``(n_simulations,)``.
-        """
-        results = np.empty(self.n, dtype=np.float64)
-        for i in range(self.n):
-            results[i] = self._sim_one_team(batting_order, pitcher_id, game_pk, half_inning)
-        return results
-
     def simulate_game(
         self,
         home_order: list[int],
@@ -252,13 +237,20 @@ class MonteCarloSimulator:
         away_pitcher: int,
         game_pk: int,
     ) -> dict[str, Any]:
-        """Simulate a full game.
+        """Simulate a full game with batched model inference.
+
+        Pre-computes feature vectors for all 18 batter-pitcher combos,
+        batch-predicts them once, then runs Monte Carlo simulation using
+        the cached distributions.
 
         Returns dict with ``home_runs``, ``away_runs``, ``total_runs``
         arrays (one per simulation) plus summary stats.
         """
-        away = self.simulate(away_order, away_pitcher, game_pk, "top")
-        home = self.simulate(home_order, home_pitcher, game_pk, "bottom")
+        home_probas = self._batch_probas(home_order, home_pitcher, game_pk)
+        away_probas = self._batch_probas(away_order, away_pitcher, game_pk)
+
+        away = self._sim_team_fast(away_order, away_pitcher, away_probas, "top", game_pk)
+        home = self._sim_team_fast(home_order, home_pitcher, home_probas, "bottom", game_pk)
         total = away + home
 
         def _stats(arr: np.ndarray) -> dict[str, float]:
@@ -281,38 +273,56 @@ class MonteCarloSimulator:
             "total": _stats(total),
         }
 
-    def _sim_one_team(
+    def _batch_probas(
         self,
         order: list[int],
         pitcher_id: int,
         game_pk: int,
+    ) -> np.ndarray:
+        """Compute probability distributions for all batters vs this pitcher.
+
+        Returns array of shape (len(order), n_classes).
+        """
+        fvs = []
+        for bid in order:
+            fv = self.rs.feature_vector(
+                bid, pitcher_id,
+                include_platoon=True,
+                include_game_context=True,
+                include_game_log=True,
+                include_game_log_rates=True,
+                game_pk=game_pk,
+            )
+            fvs.append(fv)
+        batch = np.array(fvs, dtype=np.float64)
+        return self.model.predict_proba(batch)
+
+    def _sim_team_fast(
+        self,
+        order: list[int],
+        pitcher_id: int,
+        probas: np.ndarray,
         half_inning: str,
-    ) -> float:
-        total = 0.0
-        for inning in range(9):
-            outs = 0
-            bi = inning
-            while outs < 3:
-                bid = order[bi % len(order)]
-                bi += 1
+        game_pk: int,
+    ) -> np.ndarray:
+        """Run *n* Monte Carlo simulations using cached probability arrays.
 
-                fv = self.rs.feature_vector(
-                    bid, pitcher_id,
-                    half_inning=half_inning,
-                    inning=inning + 1,
-                    outs_before=outs,
-                    balls=0,
-                    strikes=0,
-                    include_platoon=True,
-                    include_game_context=True,
-                    include_game_log=True,
-                    game_pk=game_pk,
-                )
-                proba = self.model.predict_proba(fv.reshape(1, -1))[0]
-                outcome = int(self.rng.multinomial(1, proba).argmax())
+        probas shape: (len(order), n_classes) — one distribution per batter.
+        """
+        n_ordered = len(order)
+        results = np.empty(self.n, dtype=np.float64)
 
-                total += self.runs[outcome]
-
-                if self.rng.random() < self.out_probs[outcome]:
-                    outs += 1
-        return total
+        for sim in range(self.n):
+            total = 0.0
+            for inning in range(9):
+                outs = 0
+                bi = inning
+                while outs < 3:
+                    proba = probas[bi % n_ordered]
+                    outcome = int(self.rng.multinomial(1, proba).argmax())
+                    total += self.runs[outcome]
+                    if self.rng.random() < self.out_probs[outcome]:
+                        outs += 1
+                    bi += 1
+            results[sim] = total
+        return results

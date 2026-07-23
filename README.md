@@ -119,6 +119,22 @@ factor = pf.factor(19, "wOBA", season=2024)
 print(factor)  # e.g. 1.11 (11% boost)
 ```
 
+### GPU-accelerated models (Apple Silicon)
+
+A full neural model toolbox runs on Apple's MLX framework (Metal GPU):
+
+| Model | Description | File |
+|-------|-------------|------|
+| `MlxNNClassifier` | sklearn-compatible MLP | `models/mlx_nn.py` |
+| `SequenceHitPredictor` | GRU over 15-game stat windows | `models/sequence.py` |
+| `HybridHitPredictor` | GRU + context-feature MLP | `models/sequence.py` |
+| `MultiTaskHybridPredictor` | Shared encoder + two heads (0.5/1.5 targets) | `models/sequence.py` |
+| `DCNMultiTaskPredictor` | Deep & Cross Network on context features | `models/sequence.py` |
+| `TransformerMultiTaskPredictor` | Transformer encoder replacing GRU | `models/sequence.py` |
+
+All plug into the walk-forward training pipeline via `--model mlx` or as
+ensemble components. Benchmark: `pipeline/benchmark_mlx.py`.
+
 ## Project Structure
 
 ```
@@ -171,8 +187,11 @@ mlb train --use-cached
 # Predict on a season with a saved model
 mlb predict --season 2026
 
-# Walk-forward backtest with betting simulation
-mlb backtest
+# Walk-forward backtest with betting simulation (single model)
+mlb backtest --model lgb
+
+# Ensemble backtest (uniform average of all four)
+mlb backtest --model lr,xgb,rf,lgb
 
 # Hyperparameter tuning
 mlb tune --trials 20
@@ -183,8 +202,8 @@ mlb e2e --team-id 108 --season 2024
 
 ### Daily betting strategy
 
-The `mlb bet` command generates player-prop bets based on the model's own
-well-calibrated probabilities — no market odds needed:
+The `mlb bet` command generates player-prop bets from a uniform-average
+ensemble of LogisticRegression, XGBoost, RandomForest, and LightGBM:
 
 ```bash
 # Generate today's bets (P(hit ≥ 1) > 0.55, $1 per bet)
@@ -199,14 +218,31 @@ mlb bet --pnl
 # Custom threshold and stake
 mlb bet --threshold 0.60 --stake 5.00
 
+# Use a trained single model instead of ensemble
+mlb bet --model-dir data/models/final_0_5
+
 # Specific date
 mlb bet --date 2026-07-23
 ```
 
-The strategy is backed by 10-season walk-forward analysis showing **+22.6%
-flat ROI** at 0.55 threshold across 251K out-of-sample bets (P(hits ≥ 1),
--110 odds). See `experiments/evaluate_internal_odds.py` for the full
-analysis.
+#### Backtest results (4-season walk-forward, 2021–2024)
+
+**Target: P(hit ≥ 1)** — Ensemble: 96K bets at 0.55 threshold, **+22.49%
+ROI**. AUC 0.639 across 155K out-of-sample predictions.
+
+```
+Thresh    Bets  WinRate       ROI    MaxDD
+ 0.55    96632   0.6416    +22.49%    0.10%
+ 0.60    71112   0.6658    +27.11%    0.04%
+ 0.65    43105   0.6907    +31.84%    0.02%
+ 0.70    18000   0.7191    +37.27%    0.35%
+ 0.75     4403   0.7533    +43.81%    2.49%
+```
+
+**Target: P(hit ≥ 2)** — Not viable: 33 bets total with -36% ROI.
+
+The system is self-calibrated (no market odds required). See the
+[ROADMAP](./ROADMAP.md) for full details.
 
 ## Development
 

