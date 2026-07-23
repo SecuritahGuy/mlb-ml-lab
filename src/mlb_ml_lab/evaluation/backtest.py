@@ -62,6 +62,7 @@ def walk_forward_predict(
     model_type: str | list[str] = "lgb",
     n_splits: int = 5,
     seed: int = 42,
+    params: dict[str, Any] | None = None,
 ) -> list[GamePrediction]:
     """Run walk-forward validation and return every out-of-sample prediction.
 
@@ -113,7 +114,7 @@ def walk_forward_predict(
         all_probas = np.zeros((n_test, len(model_types)), dtype=np.float64)
 
         for i, mt in enumerate(model_types):
-            model = _build_model(mt, seed)
+            model = _build_model(mt, seed, params=params)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", category=UserWarning)
                 model.fit(x_all[train_idx], y_all[train_idx])
