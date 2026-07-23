@@ -30,9 +30,7 @@ from mlb_ml_lab import (
     make_targets,
     save_feature_data,
 )
-from mlb_ml_lab.data.odds import fetch_game_odds, load_cached_odds, save_cached_odds
 from mlb_ml_lab.evaluation.backtest import (
-    calibration_buckets,
     expected_calibration_error,
     simulate_bets,
     walk_forward_predict,
@@ -163,7 +161,7 @@ def cmd_train(args: argparse.Namespace) -> None:
         print("Fetching live data...")
         cmd_fetch(args)
 
-        print(f"Loading freshly saved data...")
+        print("Loading freshly saved data...")
         dataset_dir = (
             args.output
             or f"data/datasets/fetch_{args.seasons[0]}_{args.seasons[-1]}"
@@ -320,7 +318,8 @@ def cmd_predict(args: argparse.Namespace) -> None:
     y_proba = model.predict_proba(x)[:, 1]
     y_pred = (y_proba > 0.5).astype(int)
 
-    import json, os
+    import json
+    import os
 
     output_dir = args.output or f"data/predictions/{args.season}"
     os.makedirs(output_dir, exist_ok=True)
