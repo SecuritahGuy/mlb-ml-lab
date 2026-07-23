@@ -637,6 +637,46 @@ def load_model(
 # ---------------------------------------------------------------------------
 
 
+def load_ensemble(
+    directory: str,
+) -> tuple[list[Any], list[str], SimpleImputer, dict[str, Any]]:
+    """Load all models in an ensemble directory.
+
+    Expects subdirectories named by model type under *directory*,
+    each written by ``save_model()``.  The ensemble shares a single
+    ``feature_cols`` and ``imputer`` (taken from the first model).
+
+    Returns:
+        ``(models, feature_cols, imputer, metadata)`` where
+        ``models`` is a list of ``(model_type, fitted_model)`` tuples.
+    """
+    models: list[tuple[str, Any]] = []
+    feature_cols: list[str] | None = None
+    imputer: SimpleImputer | None = None
+    combined_meta: dict[str, Any] = {}
+
+    for entry in sorted(os.listdir(directory)):
+        subdir = os.path.join(directory, entry)
+        if not os.path.isdir(subdir):
+            continue
+        model_path = os.path.join(subdir, "model.joblib")
+        if not os.path.isfile(model_path):
+            continue
+        m, fc, imp, meta = load_model(subdir)
+        models.append((entry, m))
+        if feature_cols is None:
+            feature_cols = fc
+            imputer = imp
+        combined_meta[entry] = meta
+
+    if not models:
+        raise FileNotFoundError(
+            f"No model subdirectories found in {directory}"
+        )
+    combined_meta["ensemble_model_count"] = len(models)
+    return models, feature_cols or [], imputer or SimpleImputer(), combined_meta
+
+
 def train_final(
     feature_matrix: list[dict[str, Any]],
     targets: list[dict[str, Any]],

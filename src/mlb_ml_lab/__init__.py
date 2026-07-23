@@ -50,6 +50,7 @@ __all__ = [
     "describe_features",
     "load_feature_data",
     "load_game_logs",
+    "load_ensemble",
     "load_model",
     "make_targets",
     "save_feature_data",
@@ -59,10 +60,11 @@ __all__ = [
 
 
 def __getattr__(name: str) -> Any:
-    if name in {"load_model", "save_model", "train_final"}:
-        from mlb_ml_lab.models.train import load_model, save_model, train_final
+    if name in {"load_ensemble", "load_model", "save_model", "train_final"}:
+        from mlb_ml_lab.models.train import load_ensemble, load_model, save_model, train_final
 
         return {
+            "load_ensemble": load_ensemble,
             "load_model": load_model,
             "save_model": save_model,
             "train_final": train_final,

@@ -9,6 +9,8 @@ from typing import Any
 
 import numpy as np
 from sklearn.impute import SimpleImputer
+from sklearn.isotonic import IsotonicRegression
+from sklearn.model_selection import KFold
 
 from mlb_ml_lab.models.train import (
     WalkForwardSplit,
@@ -57,7 +59,7 @@ def walk_forward_predict(
     feature_matrix: list[dict[str, Any]],
     targets: list[dict[str, Any]],
     target_col: str = "target_0.5",
-    model_type: str = "lgb",
+    model_type: str | list[str] = "lgb",
     n_splits: int = 5,
     seed: int = 42,
 ) -> list[GamePrediction]:
@@ -66,12 +68,16 @@ def walk_forward_predict(
     Mirrors the data-prep logic in ``train_baselines()`` but preserves
     per-game predictions instead of aggregating into fold metrics.
 
+    When ``model_type`` is a list of model types, trains each model per fold
+    and averages their probabilities (uniform ensemble).
+
     Args:
         feature_matrix: Output from ``build_feature_matrix()``.
         targets: Output from ``make_targets()``.
         target_col: Which target column to predict (``target_0.5`` or
                     ``target_1.5``).
-        model_type: Classifier type (``lr``, ``xgb``, ``rf``, ``lgb``).
+        model_type: Classifier type(s) — ``lr``, ``xgb``, ``rf``, ``lgb``,
+                    or a list for uniform ensemble.
         n_splits: Number of walk-forward folds.
         seed: Random seed for reproducibility.
 
@@ -99,15 +105,23 @@ def walk_forward_predict(
     splitter = WalkForwardSplit(n_splits=n_splits)
     folds = splitter.split(dates)
 
+    model_types = [model_type] if isinstance(model_type, str) else model_type
+
     predictions: list[GamePrediction] = []
     for train_idx, test_idx in folds:
-        model = _build_model(model_type, seed)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=UserWarning)
-            model.fit(x_all[train_idx], y_all[train_idx])
-        proba = model.predict_proba(x_all[test_idx])[:, 1]
+        n_test = len(test_idx)
+        all_probas = np.zeros((n_test, len(model_types)), dtype=np.float64)
 
-        for idx, prob in zip(test_idx, proba.tolist()):
+        for i, mt in enumerate(model_types):
+            model = _build_model(mt, seed)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=UserWarning)
+                model.fit(x_all[train_idx], y_all[train_idx])
+            all_probas[:, i] = model.predict_proba(x_all[test_idx])[:, 1]
+
+        ensemble_proba = np.mean(all_probas, axis=1)
+
+        for idx, prob in zip(test_idx, ensemble_proba.tolist()):
             predictions.append(
                 GamePrediction(
                     date=merged[idx]["date"],
@@ -349,6 +363,150 @@ def print_backtest_report(
             mce = total_abs_err / cal_entries
             print(f"\n  Mean calibration error: {mce:.4f}")
         print(sep)
+
+
+# ---------------------------------------------------------------------------
+# Kelly staking
+# ---------------------------------------------------------------------------
+
+
+def kelly_fraction(
+    win_prob: float,
+    decimal_odds: float,
+) -> float:
+    """Compute the Kelly stake fraction for a single bet.
+
+    ``f* = (p * b - q) / b`` where ``b = decimal_odds - 1``, ``q = 1 - p``.
+    Returns 0.0 if the expected value is negative.
+    """
+    if win_prob <= 0 or win_prob >= 1:
+        return 0.0
+    b = decimal_odds - 1.0
+    q = 1.0 - win_prob
+    f = (win_prob * b - q) / b
+    return max(0.0, f)
+
+
+def simulate_kelly_bets(
+    predictions: list[GamePrediction],
+    bankroll: float = 1000.0,
+    decimal_odds: float = 1.909,
+    min_prob: float | None = None,
+    frac: float = 0.25,
+) -> BetResult:
+    """Simulate fractional-Kelly staking over out-of-sample predictions.
+
+    Args:
+        predictions: Out-of-sample predictions.
+        bankroll: Starting bankroll (default $1,000).
+        decimal_odds: Assumed decimal odds (1.909 ≈ -110 US).
+        min_prob: Minimum predicted probability to bet.
+                  Defaults to break-even (1 / decimal_odds).
+        frac: Fraction of full Kelly to use (default 0.25).
+
+    Returns:
+        ``BetResult`` with summary statistics.
+    """
+    if min_prob is None:
+        min_prob = 1.0 / decimal_odds
+
+    profits: list[float] = []
+    running_bankroll = float(bankroll)
+    wins = 0
+
+    for gp in predictions:
+        if gp.predicted_prob < min_prob:
+            continue
+        f = kelly_fraction(gp.predicted_prob, decimal_odds)
+        if f <= 0:
+            continue
+        stake = running_bankroll * f * frac  # fractional Kelly
+        if stake <= 0:
+            continue
+        if gp.actual == 1:
+            payout = stake * decimal_odds
+            profit = payout - stake
+            wins += 1
+        else:
+            profit = -stake
+        running_bankroll += profit
+        profits.append(profit)
+
+    total_bets = len(profits)
+    if total_bets == 0:
+        return BetResult(
+            threshold=min_prob,
+            stake_per_bet=0.0,
+            avg_odds=decimal_odds,
+        )
+
+    total_stake = sum(abs(p) for p in profits)
+    total_profit = float(np.sum(profits))
+    daily = _daily_profits(predictions, profits, min_prob)
+    mdd = max_drawdown(daily)
+    predicted_probs = [
+        gp.predicted_prob for gp in predictions if gp.predicted_prob >= min_prob
+    ]
+    pred_mean = float(np.mean(predicted_probs)) if predicted_probs else 0.0
+
+    return BetResult(
+        total_bets=total_bets,
+        wins=wins,
+        losses=total_bets - wins,
+        win_rate=wins / total_bets if total_bets > 0 else 0.0,
+        total_stake=total_stake,
+        total_profit=round(total_profit, 2),
+        roi=round(total_profit / total_stake, 4) if total_stake > 0 else 0.0,
+        max_drawdown=round(mdd, 4),
+        predicted_prob_mean=round(pred_mean, 4),
+        avg_odds=decimal_odds,
+        threshold=round(min_prob, 4),
+        stake_per_bet=0.0,
+        daily_profits=daily,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Calibration helpers
+# ---------------------------------------------------------------------------
+
+
+def isotonic_calibrate(
+    raw_probs: list[float] | np.ndarray,
+    y_true: list[int] | np.ndarray,
+    n_splits: int = 5,
+    seed: int = 42,
+) -> np.ndarray:
+    """Leakage-free isotonic calibration via K-fold cross-fitting.
+
+    Fits an isotonic regressor on ``n_splits - 1`` folds and predicts on the
+    held-out fold so no target leaks into its own calibrated probability.
+    Falls back to a single fit when the data is too small for K-fold.
+
+    Args:
+        raw_probs: Uncalibrated predicted probabilities.
+        y_true: Binary ground-truth labels.
+        n_splits: Number of cross-fitting folds.
+        seed: Random seed for KFold shuffle.
+
+    Returns:
+        Calibrated probabilities (same shape as ``raw_probs``).
+    """
+    raw = np.asarray(raw_probs, dtype=float)
+    y = np.asarray(y_true, dtype=float)
+
+    if len(raw) < n_splits * 10:
+        ir = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+        ir.fit(raw, y)
+        return ir.predict(raw)
+
+    out = np.empty(len(raw), dtype=float)
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    for tr, te in kf.split(raw):
+        ir = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+        ir.fit(raw[tr], y[tr])
+        out[te] = ir.predict(raw[te])
+    return out
 
 
 # ---------------------------------------------------------------------------

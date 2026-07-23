@@ -144,15 +144,69 @@ mlb-ml-lab/
 ├── pipeline/                   # Modeling (training, prediction, evaluation)
 ├── tests/
 │   ├── data/                   # Tests for data layer
-│   └── features/               # Tests for feature engineering
+│   ├── features/               # Tests for feature engineering
+│   ├── models/                 # Tests for model training/evaluation
+│   └── evaluation/             # Tests for backtesting/calibration
 ├── data/                       # Raw/processed datasets (gitignored)
-├── experiments/                # Notebooks (gitignored)
+│   └── betting/                # P&L tracking (pnl.json)
+├── experiments/                # Analysis scripts (not notebooks)
 ├── pyproject.toml
 ├── README.md
 ├── LICENSE
 ├── AGENTS.md                   # Dev instructions (AI assistant)
 └── ROADMAP.md                  # Build-out plan
 ```
+
+## CLI
+
+A command-line interface is available after install:
+
+```bash
+# Fetch data and build feature matrix
+mlb fetch --seasons 2024 2025 --max-players 20
+
+# Walk-forward validation training
+mlb train --use-cached
+
+# Predict on a season with a saved model
+mlb predict --season 2026
+
+# Walk-forward backtest with betting simulation
+mlb backtest
+
+# Hyperparameter tuning
+mlb tune --trials 20
+
+# Quick end-to-end for one team
+mlb e2e --team-id 108 --season 2024
+```
+
+### Daily betting strategy
+
+The `mlb bet` command generates player-prop bets based on the model's own
+well-calibrated probabilities — no market odds needed:
+
+```bash
+# Generate today's bets (P(hit ≥ 1) > 0.55, $1 per bet)
+mlb bet
+
+# Settle yesterday's bets and update P&L
+mlb bet --settle
+
+# View running P&L
+mlb bet --pnl
+
+# Custom threshold and stake
+mlb bet --threshold 0.60 --stake 5.00
+
+# Specific date
+mlb bet --date 2026-07-23
+```
+
+The strategy is backed by 10-season walk-forward analysis showing **+22.6%
+flat ROI** at 0.55 threshold across 251K out-of-sample bets (P(hits ≥ 1),
+-110 odds). See `experiments/evaluate_internal_odds.py` for the full
+analysis.
 
 ## Development
 

@@ -194,7 +194,7 @@ class MeteostatWeather:
             return None
 
         lat, lon = coords
-        nearby = Stations().nearby(lat, lon)
+        nearby = Stations().nearby(lat, lon).fetch()
         if nearby is None or nearby.empty:
             return None
 
