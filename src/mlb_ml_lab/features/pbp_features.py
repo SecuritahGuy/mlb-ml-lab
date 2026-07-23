@@ -14,6 +14,7 @@ PITCHER_WINDOWS = [20, 50, 100]
 
 PLATOON_FEATURES = ["batter_hand_R", "batter_hand_L", "pitcher_hand_R", "pitcher_hand_L", "platoon_advantage"]
 
+GAME_CONTEXT_FEATURES = ["park_wOBA", "park_HR", "temp", "wind_speed", "indoor"]
 
 _PA_SAMPLE_RATE = 1.0  # can reduce for faster dev
 
@@ -29,6 +30,17 @@ def _load_handedness(path: str = "data/simulation/player_handedness.json") -> di
     return _handedness
 
 
+_game_context: dict[str, dict] | None = None
+
+
+def _load_game_context(path: str = "data/simulation/game_context.json") -> dict[str, dict]:
+    global _game_context
+    if _game_context is None:
+        with open(path) as f:
+            _game_context = json.load(f)
+    return _game_context
+
+
 def _window_key(prefix: str, window: int, outcome: str) -> str:
     return f"{prefix}_last{window}_{outcome}_rate"
 
@@ -37,7 +49,7 @@ def _window_count_key(prefix: str, window: int) -> str:
     return f"{prefix}_last{window}_count"
 
 
-def _all_feature_names(include_context: bool = True, include_platoon: bool = True) -> list[str]:
+def _all_feature_names(include_context: bool = True, include_platoon: bool = True, include_game_context: bool = True) -> list[str]:
     names: list[str] = []
     for w in BATTER_WINDOWS:
         for o in OUTCOME_CLASSES:
@@ -49,6 +61,8 @@ def _all_feature_names(include_context: bool = True, include_platoon: bool = Tru
         names.append(_window_count_key("pitcher", w))
     if include_platoon:
         names.extend(PLATOON_FEATURES)
+    if include_game_context:
+        names.extend(GAME_CONTEXT_FEATURES)
     if include_context:
         names.extend(["half_inning_top", "inning", "outs_before", "balls", "strikes"])
     return names
@@ -60,6 +74,7 @@ def compute_pbp_features(
     sample_rate: float = 1.0,
     include_context: bool = True,
     include_platoon: bool = True,
+    include_game_context: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, list[str], list[int]]:
     """Compute rolling features for every PA in the dataset.
 
@@ -88,7 +103,7 @@ def compute_pbp_features(
     batter_windows: dict[int, dict[int, deque[str]]] = {}
     pitcher_windows: dict[int, dict[int, deque[str]]] = {}
 
-    feature_names = _all_feature_names(include_context=include_context, include_platoon=include_platoon)
+    feature_names = _all_feature_names(include_context=include_context, include_platoon=include_platoon, include_game_context=include_game_context)
     n_features = len(feature_names)
 
     X_list: list[np.ndarray] = []
@@ -146,6 +161,17 @@ def compute_pbp_features(
                 features[col + 4] = 1.0 if bh != ph else 0.0
             col += len(PLATOON_FEATURES)
 
+        if include_game_context:
+            gc = _load_game_context()
+            gpk_str = str(pa["game_pk"])
+            ctx = gc.get(gpk_str, {})
+            features[col] = float(ctx.get("park_wOBA", 1.0))
+            features[col + 1] = float(ctx.get("park_HR", 1.0))
+            features[col + 2] = float(ctx.get("temp", 72.0))
+            features[col + 3] = float(ctx.get("wind_speed", 0.0))
+            features[col + 4] = float(ctx.get("indoor", 0.0))
+            col += len(GAME_CONTEXT_FEATURES)
+
         if include_context:
             features[col] = 1.0 if pa.get("half_inning") == "top" else 0.0
             features[col + 1] = float(pa.get("inning", 1))
@@ -167,12 +193,14 @@ def compute_pbp_features(
 class RollingState:
     """Maintain rolling windows and produce feature vectors for any matchup."""
 
-    def __init__(self, game_dates: dict[int, str], handedness_path: str = "data/simulation/player_handedness.json"):
+    def __init__(self, game_dates: dict[int, str], handedness_path: str = "data/simulation/player_handedness.json",
+                 game_context_path: str = "data/simulation/game_context.json"):
         self.game_dates = game_dates
         self.batter_windows: dict[int, dict[int, deque[str]]] = {}
         self.pitcher_windows: dict[int, dict[int, deque[str]]] = {}
         self._processed: set[int] = set()
         self._handedness = _load_handedness(handedness_path)
+        self._game_context = _load_game_context(game_context_path)
 
     def replay_until(self, pas: list[dict], target_date: str) -> None:
         """Replay all PAs before *target_date* to populate rolling windows."""
@@ -201,13 +229,16 @@ class RollingState:
         strikes: int = 0,
         include_context: bool = False,
         include_platoon: bool = True,
+        include_game_context: bool = True,
+        game_pk: int = 0,
     ) -> np.ndarray:
         """Build feature vector for a batter-pitcher matchup."""
         n_bat = len(BATTER_WINDOWS) * (len(OUTCOME_CLASSES) + 1)
         n_pit = len(PITCHER_WINDOWS) * (len(OUTCOME_CLASSES) + 1)
         n_plt = len(PLATOON_FEATURES) if include_platoon else 0
+        n_gcx = len(GAME_CONTEXT_FEATURES) if include_game_context else 0
         n_ctx = 5 if include_context else 0
-        features = np.zeros(n_bat + n_pit + n_plt + n_ctx, dtype=np.float64)
+        features = np.zeros(n_bat + n_pit + n_plt + n_gcx + n_ctx, dtype=np.float64)
 
         col = 0
         for w in BATTER_WINDOWS:
@@ -243,6 +274,16 @@ class RollingState:
             else:
                 features[col + 4] = 1.0 if bh != ph else 0.0
             col += len(PLATOON_FEATURES)
+
+        if include_game_context:
+            gc = self._game_context
+            ctx = gc.get(str(game_pk), {})
+            features[col] = float(ctx.get("park_wOBA", 1.0))
+            features[col + 1] = float(ctx.get("park_HR", 1.0))
+            features[col + 2] = float(ctx.get("temp", 72.0))
+            features[col + 3] = float(ctx.get("wind_speed", 0.0))
+            features[col + 4] = float(ctx.get("indoor", 0.0))
+            col += len(GAME_CONTEXT_FEATURES)
 
         if include_context:
             features[col] = 1.0 if half_inning == "top" else 0.0
