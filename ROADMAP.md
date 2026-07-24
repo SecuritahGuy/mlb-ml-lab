@@ -88,27 +88,27 @@ is real.
 - [x] CLI entry point (`argparse`) — `mlb fetch`, `mlb train`, `mlb predict`, `mlb backtest`, `mlb bet`, `mlb tune`, `mlb e2e`
 - [x] Live betting workflow: `mlb bet` (generate/settle/pnl)
 - [x] Ensemble fully integrated into CLI (`--model lr,xgb,rf,lgb`)
-- [ ] Scheduled data refresh (cron / GitHub Actions) — *low priority*
+- [x] Per-season isotonic calibration (ECE 0.0105 → 0.0018)
+- [x] Model stacking experiment (uniform avg is optimal; Δ +0.0013 AUC from LR meta)
+- [ ] **Not doing**: GitHub Actions / cloud-based scheduled training. All training is local.
 - [ ] Optional: local LLM-powered analysis of mispredictions via LM Studio
 
 ## Phase 6: GPU-Accelerated Neural Models (Apple Silicon)
 
-The project has a full MLX neural model toolbox. Untested in production
-walk-forward — needs systematic backtesting to see if GPU models beat
-the ensemble.
+Systematic backtest of all MLX model types on the 2021–2024 dataset.
 
-- [x] `MlxNNClassifier` — sklearn-compatible MLP (drop-in for sklearn models)
-- [x] `SequenceHitPredictor` — GRU over 15-game stat windows → sigmoid
-- [x] `HybridHitPredictor` — GRU + context-feature MLP
-- [x] `MultiTaskHybridPredictor` — shared encoder, two heads (0.5/1.5)
-- [x] `DCNMultiTaskPredictor` — Deep & Cross Network over context
-- [x] `TransformerMultiTaskPredictor` — transformer replacing GRU
+- [x] `MlxNNClassifier` — AUC 0.625 (close to ensemble 0.639, single GPU model)
+- [x] `SequenceHitPredictor` (GRU) — AUC 0.583, below MLP baseline
+- [x] `HybridHitPredictor` (GRU+context) — AUC 0.583, sequence models don't add value
+- [x] `MultiTaskHybridPredictor` — AUC 0.579/0.594, shared encoder doesn't help 1.5
+- [x] `DCNMultiTaskPredictor` — AUC 0.573, cross network adds nothing
+- [x] `TransformerMultiTaskPredictor` — AUC 0.568, worse than GRU
 - [x] Persistence (save/load safetensors + scalers) for all models
 - [x] Integration into walk-forward training pipeline (`--model mlx`)
-- [ ] **TODO**: Full backtest: does GRU/Hybrid/Transformer beat LR+XGB+RF+LGBM?
-- [ ] **TODO**: Large-model scaling: bigger hidden dims, more layers, longer sequences
-- [ ] **TODO**: Feature ablation on GPU — can MLX models extract signal from richer inputs?
-- [ ] **TODO**: Compare GPU vs CPU training speed on full 4-season dataset
+- [x] PA outcome model on MLX — log-loss 1.412 wall stands (all archs hit the same ceiling)
+- [x] GPU vs CPU benchmark: XGBoost fastest (1.8s), MLP slowest on GPU (14-129s depending on epochs)
+- [x] Dropout critical for MLP (AUC drops 0.59 → 0.53 without it)
+- [x] Architecture search: smaller MLP (64→32) best on limited data
 
 ### Guiding principles
 

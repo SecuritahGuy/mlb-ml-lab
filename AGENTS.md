@@ -27,7 +27,10 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 | Run formatter | `poetry run ruff format .` |
 | Typecheck | Not yet configured |
 | Run full backtest (ensemble) | `poetry run python -c "from mlb_ml_lab.cli import main; main()" backtest --model lr,xgb,rf,lgb` |
+| Run calibrated backtest | `mlb backtest --model lr,xgb,rf,lgb --calibrate` |
 | Bench MLX GPU speed | `poetry run python pipeline/benchmark_mlx.py` |
+| Compute WAR + advanced metrics | `poetry run python experiments/compute_war.py --season 2024 --metrics --archetypes` |
+| Compute WAR (all seasons) | `poetry run python experiments/compute_war.py --min-pa 200 --save data/out/war_all.json` |
 | Compute WAR + advanced metrics | `poetry run python experiments/compute_war.py --season 2024 --metrics --archetypes` |
 | Compute WAR (all seasons) | `poetry run python experiments/compute_war.py --min-pa 200 --save data/out/war_all.json` |
 
@@ -57,9 +60,12 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 
 - **Ensemble (LR+XGB+RF+LGBM) target_0.5**: AUC 0.639, **+22.5% ROI** at 0.55 threshold, **+37.3%** at 0.70 (96K→18K bets)
 - **Target_1.5**: not viable (33 bets, -36% ROI)
-- **PA-level prediction**: wall at log-loss 1.412 regardless of features
+- **PA-level prediction**: wall at log-loss 1.412 regardless of features or model type (XGBoost, MLX MLP all converge to same ceiling)
 - **Game simulation**: r≈0.2 ceiling (both bottom-up MC and top-down team-regression)
-- Decision: ship the betting system; game simulation is dead-ended
+- **MLX MLP** (MlxNNClassifier): AUC 0.625, close second to ensemble; sequence models don't beat MLP
+- **Model stacking**: uniform average is optimal (Δ +0.0013 AUC from LR meta-model, noise)
+- **Calibration**: per-season isotonic calibration drops ECE from 0.0105 → 0.0018 (83%)
+- Decision: ship the betting system; game simulation and PA prediction are dead-ended
 
 ## Relevant Files
 
