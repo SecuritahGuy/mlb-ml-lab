@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import os
 import warnings
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+import joblib
 import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.isotonic import IsotonicRegression
@@ -508,6 +511,172 @@ def isotonic_calibrate(
         ir.fit(raw[tr], y[tr])
         out[te] = ir.predict(raw[te])
     return out
+
+
+def fit_season_calibrators(
+    predictions: list[GamePrediction],
+) -> dict[int, IsotonicRegression]:
+    """Fit per-season isotonic calibrators from walk-forward predictions.
+
+    For each season in *predictions*, fits an ``IsotonicRegression``
+    mapping the raw ``predicted_prob`` to the observed ``actual``
+    frequency.  The result can be used to calibrate new predictions
+    in the same season via ``apply_calibrators()``.
+
+    Args:
+        predictions: Out-of-sample predictions from
+                     ``walk_forward_predict()``.
+
+    Returns:
+        Dict mapping ``season`` (int) → fitted ``IsotonicRegression``.
+    """
+    by_season: dict[int, list[tuple[float, int]]] = {}
+    for p in predictions:
+        s = p.date.year if hasattr(p.date, "year") else int(str(p.date)[:4])
+        by_season.setdefault(s, []).append((p.predicted_prob, p.actual))
+
+    calibrators: dict[int, IsotonicRegression] = {}
+    for season, pairs in by_season.items():
+        raw = np.array([x[0] for x in pairs], dtype=float)
+        y = np.array([x[1] for x in pairs], dtype=float)
+        ir = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+        ir.fit(raw, y)
+        calibrators[season] = ir
+    return calibrators
+
+
+def apply_calibrators(
+    predictions: list[GamePrediction],
+    calibrators: dict[int, IsotonicRegression],
+    inplace: bool = False,
+) -> list[GamePrediction]:
+    """Apply per-season calibrators to a list of predictions.
+
+    For each prediction, looks up the calibrator for its season and
+    transforms ``predicted_prob``.
+
+    Args:
+        predictions: Predictions to calibrate.
+        calibrators: Dict from ``fit_season_calibrators()``.
+        inplace: If True, modify the original objects (slightly faster).
+
+    Returns:
+        New list of ``GamePrediction`` with calibrated probabilities
+        (or the same list if *inplace* is True).
+    """
+    result = predictions if inplace else []
+    for i, p in enumerate(predictions):
+        s = p.date.year if hasattr(p.date, "year") else int(str(p.date)[:4])
+        cal = calibrators.get(s)
+        cal_prob = float(cal.predict([[p.predicted_prob]])[0]) if cal else p.predicted_prob
+        if inplace:
+            predictions[i].predicted_prob = round(cal_prob, 4)
+        else:
+            result.append(
+                GamePrediction(
+                    date=p.date,
+                    player_id=p.player_id,
+                    game_pk=p.game_pk,
+                    predicted_prob=round(cal_prob, 4),
+                    actual=p.actual,
+                    hits=p.hits,
+                    target_col=p.target_col,
+                )
+            )
+    return result if not inplace else result
+
+
+def calibrate_predictions_crossfit(
+    predictions: list[GamePrediction],
+    n_splits: int = 5,
+    seed: int = 42,
+) -> list[GamePrediction]:
+    """Leakage-free per-season calibration via cross-fitting.
+
+    Splits each season's predictions into *n_splits* folds, fits an
+    isotonic regressor on *n_splits - 1* folds, and predicts on the
+    held-out fold.  This gives unbiased calibrated probabilities for
+    backtest evaluation.
+
+    Args:
+        predictions: Out-of-sample predictions.
+        n_splits: Number of cross-fitting folds per season.
+        seed: Random seed.
+
+    Returns:
+        New list of ``GamePrediction`` with cross-fit calibrated
+        probabilities.
+    """
+    by_season: dict[int, list[tuple[int, float, int]]] = {}
+    for i, p in enumerate(predictions):
+        s = p.date.year if hasattr(p.date, "year") else int(str(p.date)[:4])
+        by_season.setdefault(s, []).append((i, p.predicted_prob, p.actual))
+
+    result = list(predictions)
+    for season, entries in by_season.items():
+        indices = [e[0] for e in entries]
+        raw = np.array([e[1] for e in entries], dtype=float)
+        y = np.array([e[2] for e in entries], dtype=float)
+        cal = isotonic_calibrate(raw, y, n_splits=n_splits, seed=seed)
+        for idx, prob in zip(indices, cal.tolist()):
+            result[idx] = GamePrediction(
+                date=result[idx].date,
+                player_id=result[idx].player_id,
+                game_pk=result[idx].game_pk,
+                predicted_prob=round(float(prob), 4),
+                actual=result[idx].actual,
+                hits=result[idx].hits,
+                target_col=result[idx].target_col,
+            )
+    return result
+
+
+def save_calibrators(calibrators: dict[int, IsotonicRegression], directory: str) -> str:
+    """Save per-season calibrators to disk.
+
+    Writes::
+
+        {directory}/
+            calibrators/      — one ``.joblib`` per season
+            metadata.json     — list of seasons + paths
+
+    Args:
+        calibrators: Dict from ``fit_season_calibrators()``.
+        directory: Output directory (created if missing).
+
+    Returns:
+        The *directory* path.
+    """
+    cal_dir = os.path.join(directory, "calibrators")
+    os.makedirs(cal_dir, exist_ok=True)
+    metadata: list[dict[str, Any]] = []
+    for season, ir in sorted(calibrators.items()):
+        path = os.path.join(cal_dir, f"{season}.joblib")
+        joblib.dump(ir, path)
+        metadata.append({"season": season, "path": path})
+
+    with open(os.path.join(directory, "metadata.json"), "w") as f:
+        json.dump(metadata, f, indent=2)
+    return directory
+
+
+def load_calibrators(directory: str) -> dict[int, IsotonicRegression]:
+    """Load per-season calibrators saved by ``save_calibrators()``.
+
+    Args:
+        directory: Directory containing ``metadata.json`` and
+                   ``calibrators/``.
+
+    Returns:
+        Dict mapping ``season`` → fitted ``IsotonicRegression``.
+    """
+    with open(os.path.join(directory, "metadata.json")) as f:
+        metadata = json.load(f)
+    calibrators: dict[int, IsotonicRegression] = {}
+    for entry in metadata:
+        season = int(entry["season"])
+        calibrators[season] = joblib.load(entry["path"])
+    return calibrators
 
 
 # ---------------------------------------------------------------------------

@@ -31,6 +31,7 @@ from mlb_ml_lab import (
     save_feature_data,
 )
 from mlb_ml_lab.evaluation.backtest import (
+    calibrate_predictions_crossfit,
     expected_calibration_error,
     simulate_bets,
     walk_forward_predict,
@@ -371,30 +372,43 @@ def cmd_backtest(args: argparse.Namespace) -> None:
             print("  No predictions generated.")
             continue
 
-        y_true = [p.actual for p in predictions]
-        y_prob = [p.predicted_prob for p in predictions]
         try:
             from sklearn.metrics import roc_auc_score
+            y_true = [p.actual for p in predictions]
+            y_prob = [p.predicted_prob for p in predictions]
             auc = roc_auc_score(y_true, y_prob)
-            print(f"  Overall AUC: {auc:.4f}  ({len(predictions)} predictions)")
+            ece = expected_calibration_error(predictions, n_bins=10)
+            print(f"  Overall AUC: {auc:.4f}  ECE: {ece:.4f}  ({len(predictions)} predictions)")
         except Exception:
             pass
 
-        ece = expected_calibration_error(y_true, y_prob, n_bins=10)
-        print(f"  ECE (10 bins): {ece:.4f}")
+        if args.calibrate:
+            print("  Applying per-season isotonic calibration...")
+            cal_preds = calibrate_predictions_crossfit(predictions, n_splits=5, seed=42)
+            try:
+                y_prob_cal = [p.predicted_prob for p in cal_preds]
+                auc_cal = roc_auc_score([p.actual for p in cal_preds], y_prob_cal)
+                ece_cal = expected_calibration_error(cal_preds, n_bins=10)
+                print(f"  Calibrated AUC: {auc_cal:.4f}  ECE: {ece_cal:.4f}")
+            except Exception:
+                pass
+            result_preds = cal_preds
+        else:
+            result_preds = predictions
 
         bet_results = simulate_bets(
-            predictions,
+            result_preds,
             odds=args.odds,
             thresholds=[0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80],
         )
-        print(f"\n  {'Thresh':>6}  {'Bets':>6}  {'WinRate':>8}  {'ROI':>8}  {'MaxDD':>8}")
-        print(f"  {'-' * 6}  {'-' * 6}  {'-' * 8}  {'-' * 8}  {'-' * 8}")
+        label = "Calibrated" if args.calibrate else "Raw"
+        print(f"\n  {label} — {'Thresh':>6}  {'Bets':>6}  {'WinRate':>8}  {'ROI':>8}  {'MaxDD':>8}")
+        print(f"  {'-' * 6}  {'-' * 10}  {'-' * 6}  {'-' * 8}  {'-' * 8}  {'-' * 8}")
         for br in bet_results:
             if br.total_bets == 0:
                 continue
             print(
-                f"  {br.threshold:>6.2f}  {br.total_bets:>6}  "
+                f"  {label:>10}  {br.threshold:>6.2f}  {br.total_bets:>6}  "
                 f"{br.win_rate:>8.4f}  {br.roi:>8.2f}%  "
                 f"{br.max_drawdown:>8.2f}%"
             )
@@ -544,6 +558,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Model type(s). Ensemble: comma-sep (e.g. 'lr,xgb,rf,lgb')")
     p_bt.add_argument("--folds", type=int, default=5)
     p_bt.add_argument("--odds", type=int, default=-110)
+    p_bt.add_argument("--calibrate", action="store_true",
+                       help="Apply per-season isotonic calibration")
     p_bt.set_defaults(func=cmd_backtest)
 
     # tune

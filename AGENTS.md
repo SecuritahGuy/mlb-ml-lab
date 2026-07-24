@@ -28,6 +28,8 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 | Typecheck | Not yet configured |
 | Run full backtest (ensemble) | `poetry run python -c "from mlb_ml_lab.cli import main; main()" backtest --model lr,xgb,rf,lgb` |
 | Bench MLX GPU speed | `poetry run python pipeline/benchmark_mlx.py` |
+| Compute WAR + advanced metrics | `poetry run python experiments/compute_war.py --season 2024 --metrics --archetypes` |
+| Compute WAR (all seasons) | `poetry run python experiments/compute_war.py --min-pa 200 --save data/out/war_all.json` |
 
 ### CLI
 
@@ -69,6 +71,9 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 | `src/mlb_ml_lab/models/sequence.py` | GRU, Hybrid, MultiTask, DCN, Transformer models (all MLX) |
 | `src/mlb_ml_lab/cli/main.py` | CLI entry point (`backtest`, `bet`, `predict`, `train`) |
 | `experiments/betting_strategy.py` | Live betting: generates/settles/tracks P&L |
+| `experiments/war_calculator.py` | Hybrid WAR calculator (wOBA+park+baserunning+pos+replacement) |
+| `experiments/advanced_metrics.py` | OPS+, wRC+, ISO, BABIP, BB/K%, WAR/162, player archetype classification |
+| `experiments/compute_war.py` | CLI entry point for WAR + advanced metrics computation |
 | `pipeline/benchmark_mlx.py` | MLX GPU training speed benchmarks |
 | `data/models/ensemble_0_5/` | 4 trained ensemble components (gitignored) |
 
