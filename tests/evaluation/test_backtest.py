@@ -14,6 +14,10 @@ from mlb_ml_lab.evaluation.backtest import (
     max_drawdown,
     simulate_bets,
     walk_forward_predict,
+    apply_calibrators,
+    fit_season_calibrators,
+    load_calibrators,
+    save_calibrators,
 )
 
 
@@ -383,3 +387,31 @@ class TestGamePrediction:
         assert gp.actual == 1
         assert gp.hits == 2
         assert gp.target_col == "target_1.5"
+
+
+# ---------------------------------------------------------------------------
+# Calibrator save/load
+# ---------------------------------------------------------------------------
+
+
+class TestCalibratorPersistence:
+    def test_save_load_cycle(self, tmp_path):
+        preds = [
+            GamePrediction(date=date(2021, 4, 1), player_id=1, game_pk=100,
+                           predicted_prob=0.3, actual=0, hits=0, target_col="target_0.5"),
+            GamePrediction(date=date(2021, 4, 1), player_id=1, game_pk=101,
+                           predicted_prob=0.7, actual=1, hits=1, target_col="target_0.5"),
+            GamePrediction(date=date(2022, 4, 1), player_id=1, game_pk=102,
+                           predicted_prob=0.4, actual=0, hits=0, target_col="target_0.5"),
+            GamePrediction(date=date(2022, 4, 1), player_id=1, game_pk=103,
+                           predicted_prob=0.8, actual=1, hits=1, target_col="target_0.5"),
+        ]
+        calibrators = fit_season_calibrators(preds)
+        assert set(calibrators) == {2021, 2022}
+        save_calibrators(calibrators, str(tmp_path))
+        loaded = load_calibrators(str(tmp_path))
+        assert set(loaded) == {2021, 2022}
+        cal_preds = apply_calibrators(preds, loaded)
+        assert len(cal_preds) == 4
+        for cp in cal_preds:
+            assert 0.0 <= cp.predicted_prob <= 1.0

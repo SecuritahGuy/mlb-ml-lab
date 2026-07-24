@@ -33,6 +33,8 @@ from mlb_ml_lab import (
 from mlb_ml_lab.evaluation.backtest import (
     calibrate_predictions_crossfit,
     expected_calibration_error,
+    fit_season_calibrators,
+    save_calibrators,
     simulate_bets,
     walk_forward_predict,
 )
@@ -65,6 +67,8 @@ def cmd_bet(args: argparse.Namespace) -> None:
         cmd.append("--settle")
     if args.pnl:
         cmd.append("--pnl")
+    if args.calibrator_dir:
+        cmd.extend(["--calibrator-dir", args.calibrator_dir])
     cmd.extend(["--threshold", str(args.threshold)])
     cmd.extend(["--stake", str(args.stake)])
     cmd.extend(["--model-dir", args.model_dir])
@@ -396,6 +400,15 @@ def cmd_backtest(args: argparse.Namespace) -> None:
         else:
             result_preds = predictions
 
+        if args.save_calibrators:
+            model_types_str = "+".join(model_types) if len(model_types) > 1 else model_types[0]
+            cal_dir = f"data/models/calibrators_{model_types_str}_{target_col}"
+            print(f"  Fitting and saving calibrators to {cal_dir}...")
+            calibrators = fit_season_calibrators(result_preds)
+            save_calibrators(calibrators, cal_dir)
+            print(f"    Saved calibrators for {len(calibrators)} seasons")
+            print(f"    Usage: mlb bet --calibrator-dir {cal_dir}")
+
         bet_results = simulate_bets(
             result_preds,
             odds=args.odds,
@@ -560,6 +573,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_bt.add_argument("--odds", type=int, default=-110)
     p_bt.add_argument("--calibrate", action="store_true",
                        help="Apply per-season isotonic calibration")
+    p_bt.add_argument("--save-calibrators", action="store_true",
+                       help="Fit and save per-season calibrators from OOF predictions")
     p_bt.set_defaults(func=cmd_backtest)
 
     # tune
@@ -578,6 +593,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_bet.add_argument("--threshold", type=float, default=0.55)
     p_bet.add_argument("--stake", type=float, default=1.0)
     p_bet.add_argument("--model-dir", type=str, default=ENSEMBLE_DIR_DEFAULT)
+    p_bet.add_argument("--calibrator-dir", type=str, default=None,
+                        help="Path to calibrators (default: data/models/calibrators_<model>_target_0.5)")
     p_bet.add_argument("--settle", action="store_true", help="Settle unsettled bets")
     p_bet.add_argument("--pnl", action="store_true", help="Show P&L summary")
     p_bet.set_defaults(func=cmd_bet)
