@@ -6,6 +6,7 @@ from datetime import date
 
 import pytest
 
+from mlb_ml_lab.data.schemas import PlayerGameLog
 from mlb_ml_lab.evaluation.backtest import (
     GamePrediction,
     BetResult,
@@ -348,6 +349,49 @@ class TestMaxDrawdown:
 
     def test_flat(self):
         assert max_drawdown([50, 50, 50]) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# RollingAdvancedMetrics feature extractor
+# ---------------------------------------------------------------------------
+
+
+class TestRollingAdvancedMetrics:
+    def test_rolling_advanced_extracts_metrics(self):
+        from mlb_ml_lab.features.rolling_advanced import RollingAdvancedMetrics
+        logs = [
+            PlayerGameLog(player_id=1, game_pk=100, team_id=1, opponent_id=2,
+                          date="2024-04-01", is_home=True, is_win=True, game_type="R",
+                          season="2024", hits=2, at_bats=4, doubles=0, triples=0,
+                          home_runs=1, walks=1, strikeouts=1, plate_appearances=5,
+                          player_name="A"),
+            PlayerGameLog(player_id=1, game_pk=101, team_id=1, opponent_id=2,
+                          date="2024-04-02", is_home=True, is_win=True, game_type="R",
+                          season="2024", hits=0, at_bats=3, doubles=0, triples=0,
+                          home_runs=0, walks=0, strikeouts=2, plate_appearances=3,
+                          player_name="A"),
+            PlayerGameLog(player_id=1, game_pk=102, team_id=1, opponent_id=2,
+                          date="2024-04-03", is_home=True, is_win=True, game_type="R",
+                          season="2024", hits=1, at_bats=4, doubles=0, triples=0,
+                          home_runs=0, walks=0, strikeouts=0, plate_appearances=4,
+                          player_name="A"),
+            PlayerGameLog(player_id=1, game_pk=103, team_id=1, opponent_id=2,
+                          date="2024-04-04", is_home=True, is_win=True, game_type="R",
+                          season="2024", hits=1, at_bats=4, doubles=0, triples=0,
+                          home_runs=0, walks=0, strikeouts=1, plate_appearances=4,
+                          player_name="A"),
+        ]
+        ext = RollingAdvancedMetrics(windows=[2, 3])
+        rows = ext.extract(logs)
+        assert len(rows) == 4
+        row3 = rows[3]
+        assert "rolling_avg_3" in row3
+        assert row3["rolling_avg_3"] > 0
+        assert "rolling_ops_plus_3" in row3
+        assert "rolling_wrc_plus_3" in row3
+        assert "rolling_woba_3" in row3
+        # First two rows don't have enough games for 3-window yet
+        # (they will have 2-window metrics after the 2nd game though)
 
 
 # ---------------------------------------------------------------------------

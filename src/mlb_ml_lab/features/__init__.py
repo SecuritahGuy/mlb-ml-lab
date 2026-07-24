@@ -7,6 +7,7 @@ import mlb_ml_lab.features.matchup  # noqa: F401
 import mlb_ml_lab.features.pitching  # noqa: F401
 import mlb_ml_lab.features.player  # noqa: F401
 import mlb_ml_lab.features.rolling  # noqa: F401
+import mlb_ml_lab.features.rolling_advanced  # noqa: F401
 import mlb_ml_lab.features.rolling_statcast  # noqa: F401
 import mlb_ml_lab.features.schedule  # noqa: F401
 import mlb_ml_lab.features.statcast  # noqa: F401
