@@ -174,6 +174,19 @@ _ALWAYS_EXCLUDE: set[str] = {
     "target_1.5",
 }
 
+NOISE_FEATURES: set[str] = {
+    "ba", "slg", "woba", "xba", "xwoba", "xslg",
+    "xba_diff", "xslg_diff", "xwoba_diff",
+    "hardhit_percent", "barrels_per_bbe_percent", "brl_pa",
+    "avg_hit_speed", "max_hit_speed", "ev50",
+    "avg_launch_angle", "anglesweetspotpercent", "fbld", "gb",
+    "avg_distance", "max_distance", "avg_hr_distance",
+    "ev95plus", "barrels",
+    "weather_condition", "weather_temp", "weather_wind",
+    "forecast_conditions", "forecast_precip_pct", "forecast_temp",
+    "forecast_wind_direction", "forecast_wind_speed",
+}
+
 
 def _feature_columns(
     rows: list[dict[str, Any]],
@@ -305,8 +318,8 @@ def tune_hyperparameters(
     merged.sort(key=lambda r: r["date"])
     dates = [row["date"] for row in merged]
 
-    feat_cols = _feature_columns(merged)
-    x_all = np.array([[row[c] for c in feat_cols] for row in merged], dtype=np.float64)
+    feat_cols = _feature_columns(merged, exclude=NOISE_FEATURES)
+    x_all = np.array([[row.get(c, 0.0) or 0.0 for c in feat_cols] for row in merged], dtype=np.float64)
     y_all = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")
@@ -463,9 +476,9 @@ def train_baselines(
     merged.sort(key=lambda r: r["date"])
 
     dates = [row["date"] for row in merged]
-    feat_cols = _feature_columns(merged)
+    feat_cols = _feature_columns(merged, exclude=NOISE_FEATURES)
 
-    x_all = np.array([[row[c] for c in feat_cols] for row in merged], dtype=np.float64)
+    x_all = np.array([[row.get(c, 0.0) or 0.0 for c in feat_cols] for row in merged], dtype=np.float64)
     y_all = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")
@@ -710,8 +723,8 @@ def train_final(
         }
     merged.sort(key=lambda r: r["date"])
 
-    feat_cols = _feature_columns(merged)
-    x = np.array([[row[c] for c in feat_cols] for row in merged], dtype=np.float64)
+    feat_cols = _feature_columns(merged, exclude=NOISE_FEATURES)
+    x = np.array([[row.get(c, 0.0) or 0.0 for c in feat_cols] for row in merged], dtype=np.float64)
     y = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")

@@ -26,8 +26,12 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 | Run pylint | `poetry run pylint src/mlb_ml_lab/ tests/ pipeline/` |
 | Run formatter | `poetry run ruff format .` |
 | Typecheck | Not yet configured |
-| Run full backtest (ensemble) | `poetry run python -c "from mlb_ml_lab.cli import main; main()" backtest --model lr,xgb,rf,lgb` |
+| Run full backtest (ensemble) | `mlb backtest --model lr,xgb,rf,lgb` |
 | Run calibrated backtest | `mlb backtest --model lr,xgb,rf,lgb --calibrate` |
+| Save calibrators for live betting | `mlb backtest --model lr,xgb,rf,lgb --save-calibrators` |
+| Generate daily bets (with calibration) | `mlb bet --date YYYY-MM-DD --calibrator-dir data/models/calibrators_lr+xgb+rf+lgb_target_0.5 --threshold 0.65` |
+| Settle yesterday's bets | `mlb bet --settle` |
+| Track P&L | `mlb bet --pnl` |
 | Bench MLX GPU speed | `poetry run python pipeline/benchmark_mlx.py` |
 | Compute WAR + advanced metrics | `poetry run python experiments/compute_war.py --season 2024 --metrics --archetypes` |
 | Compute WAR (all seasons) | `poetry run python experiments/compute_war.py --min-pa 200 --save data/out/war_all.json` |
@@ -58,7 +62,8 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 
 ## Key Results
 
-- **Ensemble (LR+XGB+RF+LGBM) target_0.5**: AUC 0.639, **+22.5% ROI** at 0.55 threshold, **+37.3%** at 0.70 (96K→18K bets)
+- **Ensemble (LR+XGB+RF+LGBM) target_0.5**: AUC 0.636, **+22.5% ROI** at 0.55 threshold, **+37%** at 0.70 (306K→45K bets)
+- **Noise features dropped**: 32 statcast/weather features filtered out; no AUC impact (model robust to noise)
 - **Target_1.5**: not viable (33 bets, -36% ROI)
 - **PA-level prediction**: wall at log-loss 1.412 regardless of features or model type (XGBoost, MLX MLP all converge to same ceiling)
 - **Game simulation**: r≈0.2 ceiling (both bottom-up MC and top-down team-regression)

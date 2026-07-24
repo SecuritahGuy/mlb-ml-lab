@@ -20,6 +20,7 @@ from mlb_ml_lab.models.train import (
     _build_model,
     _feature_columns,
     _merge_features_targets,
+    NOISE_FEATURES,
 )
 
 
@@ -95,9 +96,12 @@ def walk_forward_predict(
     merged.sort(key=lambda r: r["date"])
 
     dates = [row["date"] for row in merged]
-    feat_cols = _feature_columns(merged)
+    feat_cols = _feature_columns(merged, exclude=NOISE_FEATURES)
 
-    x_all = np.array([[row[c] for c in feat_cols] for row in merged], dtype=np.float64)
+    x_all = np.array(
+        [[row.get(c, 0.0) or 0.0 for c in feat_cols] for row in merged],
+        dtype=np.float64,
+    )
     y_all = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")
@@ -308,7 +312,7 @@ def max_drawdown(cumulative_profits: list[float]) -> float:
         return 0.0
     arr = np.asarray(cumulative_profits, dtype=np.float64)
     peaks = np.maximum.accumulate(arr)
-    drawdowns = (peaks - arr) / np.maximum(peaks, 1e-12)
+    drawdowns = (peaks - arr) / np.maximum(peaks, 1.0)
     return float(np.max(drawdowns))
 
 
