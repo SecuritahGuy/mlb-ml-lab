@@ -145,6 +145,43 @@ def walk_forward_predict(
     return predictions
 
 
+def optimize_threshold(
+    predictions: list[GamePrediction],
+    decimal_odds: float = 1.909,
+    stake_per_bet: float = 1.0,
+    min_bets: int = 30,
+    search_step: float = 0.01,
+) -> tuple[float, float]:
+    """Find the threshold that maximizes ROI on a prediction set.
+
+    Searches ``[0.50, 0.84]`` and returns ``(best_threshold, best_roi)``.
+
+    Args:
+        predictions: Out-of-sample predictions (already OOF).
+        decimal_odds: Assumed decimal odds.
+        stake_per_bet: Unit stake.
+        min_bets: Minimum bets to consider a threshold.
+        search_step: Step size when scanning thresholds.
+
+    Returns:
+        Tuple of ``(best_threshold, best_roi)``.
+    """
+    best_thresh, best_roi = 0.50, -999.0
+    for thresh in np.arange(0.50, 0.85, search_step):
+        br = simulate_bets(
+            predictions,
+            decimal_odds=decimal_odds,
+            stake_per_bet=stake_per_bet,
+            min_prob=thresh,
+        )
+        if br.total_bets < min_bets:
+            continue
+        if br.roi > best_roi:
+            best_roi = br.roi
+            best_thresh = thresh
+    return best_thresh, best_roi
+
+
 def simulate_bets(
     predictions: list[GamePrediction],
     decimal_odds: float = 1.909,

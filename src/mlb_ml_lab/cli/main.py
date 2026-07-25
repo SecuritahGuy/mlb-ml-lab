@@ -34,6 +34,7 @@ from mlb_ml_lab.evaluation.backtest import (
     calibrate_predictions_crossfit,
     expected_calibration_error,
     fit_season_calibrators,
+    optimize_threshold,
     save_calibrators,
     simulate_bets,
     walk_forward_predict,
@@ -400,6 +401,28 @@ def cmd_backtest(args: argparse.Namespace) -> None:
         else:
             result_preds = predictions
 
+        if args.optimize_threshold:
+            # Time-based split: use earliest 80% of OOF predictions to
+            # select the profit-maximizing threshold, evaluate on latest 20%.
+            preds_sorted = sorted(result_preds, key=lambda p: p.date)
+            split_idx = int(len(preds_sorted) * 0.8)
+            val_preds, test_preds = preds_sorted[:split_idx], preds_sorted[split_idx:]
+            best_thresh, best_val_roi = optimize_threshold(
+                val_preds, decimal_odds=args.odds, min_bets=30
+            )
+            br = simulate_bets(
+                test_preds,
+                decimal_odds=args.odds,
+                stake_per_bet=1.0,
+                min_prob=best_thresh,
+            )
+            print(
+                f"\n  Optimized threshold: {best_thresh:.2f} "
+                f"(val ROI {best_val_roi * 100:+.2f}%) "
+                f"→ test ROI {br.roi * 100:+.2f}% "
+                f"({br.total_bets} bets, WR {br.win_rate:.4f})"
+            )
+
         if args.save_calibrators:
             model_types_str = "+".join(model_types) if len(model_types) > 1 else model_types[0]
             cal_dir = f"data/models/calibrators_{model_types_str}_{target_col}"
@@ -576,6 +599,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Apply per-season isotonic calibration")
     p_bt.add_argument("--save-calibrators", action="store_true",
                        help="Fit and save per-season calibrators from OOF predictions")
+    p_bt.add_argument("--optimize-threshold", action="store_true",
+                       help="Select threshold per fold via held-out validation split")
     p_bt.set_defaults(func=cmd_backtest)
 
     # tune
