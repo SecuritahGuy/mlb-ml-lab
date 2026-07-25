@@ -18,7 +18,7 @@ OUTCOME_CLASSES = [
 
 def load_pbp_dataset(path: str) -> list[dict]:
     pas: list[dict] = []
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#"):
@@ -106,23 +106,23 @@ def save_outcome_distributions(
     player_outcomes: dict,
 ) -> None:
     os.makedirs(output_dir, exist_ok=True)
-    with open(os.path.join(output_dir, "league_avg.json"), "w") as f:
+    with open(os.path.join(output_dir, "league_avg.json"), "w", encoding="utf-8") as f:
         json.dump(league_avg, f, indent=2)
     for role, data in player_outcomes.items():
         fname = f"{role}_outcomes.json"
         ser = {str(pid): dist for pid, dist in data.items()}
-        with open(os.path.join(output_dir, fname), "w") as f:
+        with open(os.path.join(output_dir, fname), "w", encoding="utf-8") as f:
             json.dump(ser, f, indent=2)
 
 
 def load_outcome_distributions(
     output_dir: str,
 ) -> tuple[dict[str, float], dict[int, dict[str, float]], dict[int, dict[str, float]]]:
-    with open(os.path.join(output_dir, "league_avg.json")) as f:
+    with open(os.path.join(output_dir, "league_avg.json"), encoding="utf-8") as f:
         league_avg: dict[str, float] = json.load(f)
-    with open(os.path.join(output_dir, "batter_outcomes.json")) as f:
+    with open(os.path.join(output_dir, "batter_outcomes.json"), encoding="utf-8") as f:
         batter_raw: dict[str, dict[str, float]] = json.load(f)
-    with open(os.path.join(output_dir, "pitcher_outcomes.json")) as f:
+    with open(os.path.join(output_dir, "pitcher_outcomes.json"), encoding="utf-8") as f:
         pitcher_raw: dict[str, dict[str, float]] = json.load(f)
     batter_outcomes = {int(k): v for k, v in batter_raw.items()}
     pitcher_outcomes = {int(k): v for k, v in pitcher_raw.items()}
