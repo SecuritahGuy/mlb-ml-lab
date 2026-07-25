@@ -175,16 +175,38 @@ _ALWAYS_EXCLUDE: set[str] = {
 }
 
 NOISE_FEATURES: set[str] = {
-    "ba", "slg", "woba", "xba", "xwoba", "xslg",
-    "xba_diff", "xslg_diff", "xwoba_diff",
-    "hardhit_percent", "barrels_per_bbe_percent", "brl_pa",
-    "avg_hit_speed", "max_hit_speed", "ev50",
-    "avg_launch_angle", "anglesweetspotpercent", "fbld", "gb",
-    "avg_distance", "max_distance", "avg_hr_distance",
-    "ev95plus", "barrels",
-    "weather_condition", "weather_temp", "weather_wind",
-    "forecast_conditions", "forecast_precip_pct", "forecast_temp",
-    "forecast_wind_direction", "forecast_wind_speed",
+    "ba",
+    "slg",
+    "woba",
+    "xba",
+    "xwoba",
+    "xslg",
+    "xba_diff",
+    "xslg_diff",
+    "xwoba_diff",
+    "hardhit_percent",
+    "barrels_per_bbe_percent",
+    "brl_pa",
+    "avg_hit_speed",
+    "max_hit_speed",
+    "ev50",
+    "avg_launch_angle",
+    "anglesweetspotpercent",
+    "fbld",
+    "gb",
+    "avg_distance",
+    "max_distance",
+    "avg_hr_distance",
+    "ev95plus",
+    "barrels",
+    "weather_condition",
+    "weather_temp",
+    "weather_wind",
+    "forecast_conditions",
+    "forecast_precip_pct",
+    "forecast_temp",
+    "forecast_wind_direction",
+    "forecast_wind_speed",
 }
 
 
@@ -319,7 +341,10 @@ def tune_hyperparameters(
     dates = [row["date"] for row in merged]
 
     feat_cols = _feature_columns(merged, exclude=NOISE_FEATURES)
-    x_all = np.array([[row.get(c, 0.0) or 0.0 for c in feat_cols] for row in merged], dtype=np.float64)
+    x_all = np.array(
+        [[row.get(c, 0.0) or 0.0 for c in feat_cols] for row in merged],
+        dtype=np.float64,
+    )
     y_all = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")
@@ -478,7 +503,10 @@ def train_baselines(
     dates = [row["date"] for row in merged]
     feat_cols = _feature_columns(merged, exclude=NOISE_FEATURES)
 
-    x_all = np.array([[row.get(c, 0.0) or 0.0 for c in feat_cols] for row in merged], dtype=np.float64)
+    x_all = np.array(
+        [[row.get(c, 0.0) or 0.0 for c in feat_cols] for row in merged],
+        dtype=np.float64,
+    )
     y_all = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")
@@ -683,9 +711,7 @@ def load_ensemble(
         combined_meta[entry] = meta
 
     if not models:
-        raise FileNotFoundError(
-            f"No model subdirectories found in {directory}"
-        )
+        raise FileNotFoundError(f"No model subdirectories found in {directory}")
     combined_meta["ensemble_model_count"] = len(models)
     return models, feature_cols or [], imputer or SimpleImputer(), combined_meta
 
@@ -724,7 +750,10 @@ def train_final(
     merged.sort(key=lambda r: r["date"])
 
     feat_cols = _feature_columns(merged, exclude=NOISE_FEATURES)
-    x = np.array([[row.get(c, 0.0) or 0.0 for c in feat_cols] for row in merged], dtype=np.float64)
+    x = np.array(
+        [[row.get(c, 0.0) or 0.0 for c in feat_cols] for row in merged],
+        dtype=np.float64,
+    )
     y = np.array([row[target_col] for row in merged], dtype=np.int32)
 
     imputer = SimpleImputer(strategy="median")

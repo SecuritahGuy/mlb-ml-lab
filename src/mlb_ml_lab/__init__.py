@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from mlb_ml_lab.data import (
     BoxscorePlayer,
@@ -30,9 +30,9 @@ from mlb_ml_lab.features import (
 )
 
 if TYPE_CHECKING:
-    from mlb_ml_lab.models.train import load_model, save_model, train_final
+    from mlb_ml_lab.models.train import load_ensemble, load_model, save_model, train_final
 
-__all__ = [
+__all__ = [  # pylint: disable=undefined-all-variable
     "BoxscorePlayer",
     "DiskCache",
     "INDOOR_VENUES",
@@ -59,7 +59,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> object:
     if name in {"load_ensemble", "load_model", "save_model", "train_final"}:
         from mlb_ml_lab.models.train import load_ensemble, load_model, save_model, train_final
 
@@ -70,4 +70,5 @@ def __getattr__(name: str) -> Any:
             "train_final": train_final,
         }[name]
 
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)

@@ -73,7 +73,12 @@ def _compute_lg_stats(
         lg_woba = woba_num / obp_den if obp_den > 0 else 0.0
         lg_r_per_pa = r / pa if pa > 0 else 0.12
 
-        out[s] = {"lg_obp": lg_obp, "lg_slg": lg_slg, "lg_woba": lg_woba, "lg_r_per_pa": lg_r_per_pa}
+        out[s] = {
+            "lg_obp": lg_obp,
+            "lg_slg": lg_slg,
+            "lg_woba": lg_woba,
+            "lg_r_per_pa": lg_r_per_pa,
+        }
     return out
 
 
@@ -170,8 +175,19 @@ class RollingAdvancedMetrics(FeatureExtractor):
     @property
     def features(self) -> list[FeatureMeta]:
         cols: list[FeatureMeta] = []
-        metrics = ["avg", "obp", "slg", "ops", "iso", "babip",
-                    "bb_pct", "k_pct", "woba", "ops_plus", "wrc_plus"]
+        metrics = [
+            "avg",
+            "obp",
+            "slg",
+            "ops",
+            "iso",
+            "babip",
+            "bb_pct",
+            "k_pct",
+            "woba",
+            "ops_plus",
+            "wrc_plus",
+        ]
         for w in self._windows:
             for m in metrics:
                 cols.append(
@@ -193,11 +209,7 @@ class RollingAdvancedMetrics(FeatureExtractor):
         game_contexts: dict[int, Any] = kwargs.get("game_contexts", {})
         park_factors: dict[int, float] = {}
         for gpk, ctx in game_contexts.items():
-            pf = (
-                ctx.get("parkFactors", {})
-                if isinstance(ctx, dict)
-                else {}
-            )
+            pf = ctx.get("parkFactors", {}) if isinstance(ctx, dict) else {}
             park_factors[gpk] = pf.get("wOBA", 1.0) if isinstance(pf, dict) else 1.0
 
         by_player: dict[int, list[PlayerGameLog]] = defaultdict(list)

@@ -57,9 +57,7 @@ def compute_runs_per_outcome(
     prev_away: dict[int, int] = defaultdict(int)
 
     # Track cumulative runs per PA per game-inning
-    game_inning_pas: dict[str, list[tuple[int, str, float]]] = (
-        defaultdict(list)
-    )
+    game_inning_pas: dict[str, list[tuple[int, str, float]]] = defaultdict(list)
 
     for pa in sorted_pas:
         gpk = pa["game_pk"]
@@ -159,13 +157,19 @@ def simulate_game(
     Returns dict with ``home_runs`` and ``away_runs``.
     """
     home_runs = expected_game_runs(
-        home_batters, home_pitchers,
-        league_avg, batter_outcomes, pitcher_outcomes,
+        home_batters,
+        home_pitchers,
+        league_avg,
+        batter_outcomes,
+        pitcher_outcomes,
         runs_per_outcome,
     )
     away_runs = expected_game_runs(
-        away_batters, away_pitchers,
-        league_avg, batter_outcomes, pitcher_outcomes,
+        away_batters,
+        away_pitchers,
+        league_avg,
+        batter_outcomes,
+        pitcher_outcomes,
         runs_per_outcome,
     )
     return {
@@ -249,8 +253,12 @@ class MonteCarloSimulator:
         home_probas = self._batch_probas(home_order, home_pitcher, game_pk)
         away_probas = self._batch_probas(away_order, away_pitcher, game_pk)
 
-        away = self._sim_team_fast(away_order, away_pitcher, away_probas, "top", game_pk)
-        home = self._sim_team_fast(home_order, home_pitcher, home_probas, "bottom", game_pk)
+        away = self._sim_team_fast(
+            away_order, away_pitcher, away_probas, "top", game_pk
+        )
+        home = self._sim_team_fast(
+            home_order, home_pitcher, home_probas, "bottom", game_pk
+        )
         total = away + home
 
         def _stats(arr: np.ndarray) -> dict[str, float]:
@@ -286,7 +294,8 @@ class MonteCarloSimulator:
         fvs = []
         for bid in order:
             fv = self.rs.feature_vector(
-                bid, pitcher_id,
+                bid,
+                pitcher_id,
                 include_platoon=True,
                 include_game_context=True,
                 include_game_log=True,

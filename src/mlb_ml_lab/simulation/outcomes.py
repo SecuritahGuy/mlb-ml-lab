@@ -5,7 +5,6 @@ import os
 from collections import defaultdict, Counter
 
 
-
 OUTCOME_CLASSES = [
     "single",
     "double",

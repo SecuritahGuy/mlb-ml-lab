@@ -177,9 +177,7 @@ class TestMlbClientUnit:
 
     def test_get_team_hitting_stats_unknown_returns_empty(self, tmp_path):
         url = "/teams/{}/stats?group=hitting&season=2025&stats=season"
-        seeds = {
-            url.format(999): "angels_hitting_stats_2025.json"
-        }
+        seeds = {url.format(999): "angels_hitting_stats_2025.json"}
         client = self._cached_client(seeds, tmp_path)
         try:
             # The fixture is for the Angels but keyed to team 999 — the
@@ -262,9 +260,7 @@ class TestMlbClientUnit:
 
     def test_get_pitching_game_log_parsed(self, tmp_path):
         url = "/people/605130/stats?group=pitching&gameType=R&season=2025&stats=gameLog"
-        seeds = {
-            url: "kikuchi_pitching_gamelog_2025.json"
-        }
+        seeds = {url: "kikuchi_pitching_gamelog_2025.json"}
         client = self._cached_client(seeds, tmp_path)
         try:
             splits = client.get_player_game_log(605130, 2025, group="pitching")

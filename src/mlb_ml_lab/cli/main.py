@@ -92,7 +92,7 @@ def cmd_fetch(args: argparse.Namespace) -> None:
                 p
                 for p in roster
                 if (p.get("position") or {}).get("abbreviation", "") not in ("P",)
-            ][:args.max_players]
+            ][: args.max_players]
             rosters[(tid, s)] = players
 
     all_player_ids: set[int] = set()
@@ -148,7 +148,9 @@ def cmd_fetch(args: argparse.Namespace) -> None:
     targets = make_targets(all_game_logs)
     print(f"  {len(targets)} target rows")
 
-    output_dir = args.output or f"data/datasets/fetch_{args.seasons[0]}_{args.seasons[-1]}"
+    output_dir = (
+        args.output or f"data/datasets/fetch_{args.seasons[0]}_{args.seasons[-1]}"
+    )
     save_feature_data(
         feature_matrix,
         targets,
@@ -162,7 +164,7 @@ def cmd_train(args: argparse.Namespace) -> None:
     """Train models on cached or live data via walk-forward validation."""
     if args.use_cached:
         print(f"Loading cached dataset from {args.use_cached}...")
-        feature_matrix, targets, meta = load_feature_data(args.use_cached)
+        feature_matrix, targets, _meta = load_feature_data(args.use_cached)
         print(f"  {len(feature_matrix)} rows, {len(targets)} targets")
     else:
         print("Fetching live data...")
@@ -170,10 +172,9 @@ def cmd_train(args: argparse.Namespace) -> None:
 
         print("Loading freshly saved data...")
         dataset_dir = (
-            args.output
-            or f"data/datasets/fetch_{args.seasons[0]}_{args.seasons[-1]}"
+            args.output or f"data/datasets/fetch_{args.seasons[0]}_{args.seasons[-1]}"
         )
-        feature_matrix, targets, meta = load_feature_data(dataset_dir)
+        feature_matrix, targets, _meta = load_feature_data(dataset_dir)
 
     for target_col in ("target_0.5", "target_1.5"):
         print(f"\n--- Target: {target_col} ---")
@@ -345,12 +346,15 @@ def cmd_predict(args: argparse.Namespace) -> None:
         )
 
     out_path = os.path.join(output_dir, "predictions.jsonl")
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         for p in predictions:
             f.write(json.dumps(p) + "\n")
     pos_rate = sum(p[pred_key] for p in predictions)
     print(f"  {len(predictions)} predictions -> {out_path}")
-    print(f"  Positive rate: {pos_rate}/{len(predictions)} ({pos_rate / len(predictions) * 100:.1f}%)")
+    print(
+        f"  Positive rate: {pos_rate}/{len(predictions)} "
+        f"({pos_rate / len(predictions) * 100:.1f}%)"
+    )
 
 
 def cmd_backtest(args: argparse.Namespace) -> None:
@@ -379,11 +383,14 @@ def cmd_backtest(args: argparse.Namespace) -> None:
 
         try:
             from sklearn.metrics import roc_auc_score
+
             y_true = [p.actual for p in predictions]
             y_prob = [p.predicted_prob for p in predictions]
             auc = roc_auc_score(y_true, y_prob)
             ece = expected_calibration_error(predictions, n_bins=10)
-            print(f"  Overall AUC: {auc:.4f}  ECE: {ece:.4f}  ({len(predictions)} predictions)")
+            print(
+                f"  Overall AUC: {auc:.4f}  ECE: {ece:.4f}  ({len(predictions)} predictions)"
+            )
         except Exception:
             pass
 
@@ -424,7 +431,9 @@ def cmd_backtest(args: argparse.Namespace) -> None:
             )
 
         if args.save_calibrators:
-            model_types_str = "+".join(model_types) if len(model_types) > 1 else model_types[0]
+            model_types_str = (
+                "+".join(model_types) if len(model_types) > 1 else model_types[0]
+            )
             cal_dir = f"data/models/calibrators_{model_types_str}_{target_col}"
             print(f"  Fitting and saving calibrators to {cal_dir}...")
             calibrators = fit_season_calibrators(result_preds)
@@ -434,7 +443,9 @@ def cmd_backtest(args: argparse.Namespace) -> None:
 
         thresholds = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
         label = "Calibrated" if args.calibrate else "Raw"
-        print(f"\n  {label} — {'Thresh':>6}  {'Bets':>6}  {'WinRate':>8}  {'ROI':>8}  {'MaxDD':>8}")
+        print(
+            f"\n  {label} — {'Thresh':>6}  {'Bets':>6}  {'WinRate':>8}  {'ROI':>8}  {'MaxDD':>8}"
+        )
         print(f"  {'-' * 6}  {'-' * 10}  {'-' * 6}  {'-' * 8}  {'-' * 8}  {'-' * 8}")
         for thresh in thresholds:
             br = simulate_bets(
@@ -454,7 +465,7 @@ def cmd_backtest(args: argparse.Namespace) -> None:
 def cmd_tune(args: argparse.Namespace) -> None:
     """Hyperparameter tuning via random search inside walk-forward."""
     print(f"Loading cached dataset from {args.dataset}...")
-    feature_matrix, targets, meta = load_feature_data(args.dataset)
+    feature_matrix, targets, _meta = load_feature_data(args.dataset)
     print(f"  {len(feature_matrix)} rows, {len(targets)} targets")
 
     for model_type in args.models:
@@ -489,15 +500,17 @@ def cmd_e2e(args: argparse.Namespace) -> None:
         p
         for p in roster
         if (p.get("position") or {}).get("abbreviation", "") not in ("P",)
-    ][:args.max_players]
+    ][: args.max_players]
 
-    print(f"Found {len(players)} position players for team {args.team_id} ({args.season})")
+    print(
+        f"Found {len(players)} position players for team {args.team_id} ({args.season})"
+    )
     player_ids = [p["person"]["id"] for p in players]
 
     all_game_logs: list[PlayerGameLog] = []
     for pid in player_ids:
         raw = client.get_player_game_log(pid, season=args.season)
-        for split in raw[:args.games]:
+        for split in raw[: args.games]:
             all_game_logs.append(PlayerGameLog.from_split_dict(split))
     print(f"  {len(all_game_logs)} game log rows")
 
@@ -565,20 +578,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     # fetch
     p_fetch = sub.add_parser("fetch", help="Fetch data and build feature matrix")
-    p_fetch.add_argument("--seasons", nargs="+", type=int, default=TRAIN_SEASONS_DEFAULT)
+    p_fetch.add_argument(
+        "--seasons", nargs="+", type=int, default=TRAIN_SEASONS_DEFAULT
+    )
     p_fetch.add_argument("--max-players", type=int, default=20)
     p_fetch.add_argument("-o", "--output", type=str, default=None)
     p_fetch.set_defaults(func=cmd_fetch)
 
     # train
     p_train = sub.add_parser("train", help="Train models via walk-forward validation")
-    p_train.add_argument("--use-cached", type=str, nargs="?", const=CACHED_DATASET_DEFAULT, default=None)
-    p_train.add_argument("--seasons", nargs="+", type=int, default=TRAIN_SEASONS_DEFAULT)
+    p_train.add_argument(
+        "--use-cached", type=str, nargs="?", const=CACHED_DATASET_DEFAULT, default=None
+    )
+    p_train.add_argument(
+        "--seasons", nargs="+", type=int, default=TRAIN_SEASONS_DEFAULT
+    )
     p_train.add_argument("--max-players", type=int, default=20)
     p_train.add_argument("--folds", type=int, default=4)
     p_train.add_argument("-o", "--output", type=str, default=None)
     p_train.add_argument("--model-dir", type=str, default=MODEL_DIR_DEFAULT)
-    p_train.add_argument("--save-05", action="store_true", help="Also train and save target_0.5 model")
+    p_train.add_argument(
+        "--save-05", action="store_true", help="Also train and save target_0.5 model"
+    )
     p_train.set_defaults(func=cmd_train)
 
     # predict
@@ -589,44 +610,72 @@ def build_parser() -> argparse.ArgumentParser:
     p_pred.set_defaults(func=cmd_predict)
 
     # backtest
-    p_bt = sub.add_parser("backtest", help="Walk-forward backtest with betting simulation")
+    p_bt = sub.add_parser(
+        "backtest", help="Walk-forward backtest with betting simulation"
+    )
     p_bt.add_argument("--dataset", type=str, default=CACHED_DATASET_DEFAULT)
-    p_bt.add_argument("--model", type=str, default="lgb",
-                       help="Model type(s). Ensemble: comma-sep (e.g. 'lr,xgb,rf,lgb')")
+    p_bt.add_argument(
+        "--model",
+        type=str,
+        default="lgb",
+        help="Model type(s). Ensemble: comma-sep (e.g. 'lr,xgb,rf,lgb')",
+    )
     p_bt.add_argument("--folds", type=int, default=5)
     p_bt.add_argument("--odds", type=float, default=1.909)
-    p_bt.add_argument("--calibrate", action="store_true",
-                       help="Apply per-season isotonic calibration")
-    p_bt.add_argument("--save-calibrators", action="store_true",
-                       help="Fit and save per-season calibrators from OOF predictions")
-    p_bt.add_argument("--optimize-threshold", action="store_true",
-                       help="Select threshold per fold via held-out validation split")
+    p_bt.add_argument(
+        "--calibrate", action="store_true", help="Apply per-season isotonic calibration"
+    )
+    p_bt.add_argument(
+        "--save-calibrators",
+        action="store_true",
+        help="Fit and save per-season calibrators from OOF predictions",
+    )
+    p_bt.add_argument(
+        "--optimize-threshold",
+        action="store_true",
+        help="Select threshold per fold via held-out validation split",
+    )
     p_bt.set_defaults(func=cmd_backtest)
 
     # tune
     p_tune = sub.add_parser("tune", help="Hyperparameter tuning via random search")
     p_tune.add_argument("--dataset", type=str, default=CACHED_DATASET_DEFAULT)
-    p_tune.add_argument("--models", nargs="+", default=["lgb", "xgb"], choices=["lr", "xgb", "rf", "lgb", "mlx"])
+    p_tune.add_argument(
+        "--models",
+        nargs="+",
+        default=["lgb", "xgb"],
+        choices=["lr", "xgb", "rf", "lgb", "mlx"],
+    )
     p_tune.add_argument("--trials", type=int, default=12)
     p_tune.add_argument("--folds", type=int, default=4)
-    p_tune.add_argument("--metric", type=str, default="auc", choices=["auc", "log_loss"])
+    p_tune.add_argument(
+        "--metric", type=str, default="auc", choices=["auc", "log_loss"]
+    )
     p_tune.add_argument("--seed", type=int, default=42)
     p_tune.set_defaults(func=cmd_tune)
 
     # bet
-    p_bet = sub.add_parser("bet", help="Generate daily betting recommendations and track P&L")
+    p_bet = sub.add_parser(
+        "bet", help="Generate daily betting recommendations and track P&L"
+    )
     p_bet.add_argument("--date", type=str, default=None, help="Date (YYYY-MM-DD)")
     p_bet.add_argument("--threshold", type=float, default=0.55)
     p_bet.add_argument("--stake", type=float, default=1.0)
     p_bet.add_argument("--model-dir", type=str, default=ENSEMBLE_DIR_DEFAULT)
-    p_bet.add_argument("--calibrator-dir", type=str, default=None,
-                        help="Path to calibrators (default: data/models/calibrators_<model>_target_0.5)")
+    p_bet.add_argument(
+        "--calibrator-dir",
+        type=str,
+        default=None,
+        help="Path to calibrators (default: data/models/calibrators_<model>_target_0.5)",
+    )
     p_bet.add_argument("--settle", action="store_true", help="Settle unsettled bets")
     p_bet.add_argument("--pnl", action="store_true", help="Show P&L summary")
     p_bet.set_defaults(func=cmd_bet)
 
     # e2e
-    p_e2e = sub.add_parser("e2e", help="End-to-end: fetch, featurize, train for one team/season")
+    p_e2e = sub.add_parser(
+        "e2e", help="End-to-end: fetch, featurize, train for one team/season"
+    )
     p_e2e.add_argument("--team-id", type=int, default=108, help="Los Angeles Angels")
     p_e2e.add_argument("--season", type=int, default=2024)
     p_e2e.add_argument("--max-players", type=int, default=5)

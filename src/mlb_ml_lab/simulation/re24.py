@@ -46,9 +46,7 @@ def _parse_bases_after(
     return tuple(bases)
 
 
-def _runs_on_play(
-    result: dict[str, Any], prev_home: int, prev_away: int
-) -> int:
+def _runs_on_play(result: dict[str, Any], prev_home: int, prev_away: int) -> int:
     """Total runs scored on a play from score delta."""
     home = int(result.get("homeScore", 0) or 0)
     away = int(result.get("awayScore", 0) or 0)
@@ -134,8 +132,8 @@ def compute_re24_game_method(
     that state to the end of the inning.  This is the canonical RE24
     definition.
     """
-    state_to_runs_remaining: dict[tuple[int, int, int, int], list[float]] = (
-        defaultdict(list)
+    state_to_runs_remaining: dict[tuple[int, int, int, int], list[float]] = defaultdict(
+        list
     )
 
     current_state = (0, 0, 0, 0)

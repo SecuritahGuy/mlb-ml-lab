@@ -266,7 +266,8 @@ class MlbClient:
     # ------------------------------------------------------------------
 
     def get_game_plays(
-        self, game_pk: int,
+        self,
+        game_pk: int,
     ) -> list[PlateAppearance]:
         """Return every plate appearance for a completed game.
 
@@ -274,11 +275,7 @@ class MlbClient:
         structured ``PlateAppearance`` records.
         """
         data = self._get(f"/game/{game_pk}/feed/live", version="v1.1")
-        raw_plays = (
-            data.get("liveData", {})
-            .get("plays", {})
-            .get("allPlays", [])
-        )
+        raw_plays = data.get("liveData", {}).get("plays", {}).get("allPlays", [])
         result: list[PlateAppearance] = []
         for p in raw_plays:
             pa = parse_play(p, game_pk)

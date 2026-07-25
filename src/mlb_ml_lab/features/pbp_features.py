@@ -25,13 +25,34 @@ PITCHER_GAME_METRICS = ["h_allowed", "hr_allowed", "bb_allowed", "k"]
 
 # Per-PA rate metrics (summed over game, divided by total PAs)
 BATTER_GAME_RATE_METRICS = ["hits_per_pa", "hr_per_pa", "bb_per_pa", "k_per_pa"]
-PITCHER_GAME_RATE_METRICS = ["h_allowed_per_pa", "hr_allowed_per_pa", "bb_allowed_per_pa", "k_per_pa"]
-BATTER_GAME_RATE_KEYS = {"hits_per_pa": "b_hits", "hr_per_pa": "b_hr", "bb_per_pa": "b_bb", "k_per_pa": "b_k"}
+PITCHER_GAME_RATE_METRICS = [
+    "h_allowed_per_pa",
+    "hr_allowed_per_pa",
+    "bb_allowed_per_pa",
+    "k_per_pa",
+]
+BATTER_GAME_RATE_KEYS = {
+    "hits_per_pa": "b_hits",
+    "hr_per_pa": "b_hr",
+    "bb_per_pa": "b_bb",
+    "k_per_pa": "b_k",
+}
 BATTER_GAME_RATE_DENOM = "b_pa"
-PITCHER_GAME_RATE_KEYS = {"h_allowed_per_pa": "p_h_allowed", "hr_allowed_per_pa": "p_hr_allowed", "bb_allowed_per_pa": "p_bb_allowed", "k_per_pa": "p_k"}
+PITCHER_GAME_RATE_KEYS = {
+    "h_allowed_per_pa": "p_h_allowed",
+    "hr_allowed_per_pa": "p_hr_allowed",
+    "bb_allowed_per_pa": "p_bb_allowed",
+    "k_per_pa": "p_k",
+}
 PITCHER_GAME_RATE_DENOM = "p_pa_faced"
 
-PLATOON_FEATURES = ["batter_hand_R", "batter_hand_L", "pitcher_hand_R", "pitcher_hand_L", "platoon_advantage"]
+PLATOON_FEATURES = [
+    "batter_hand_R",
+    "batter_hand_L",
+    "pitcher_hand_R",
+    "pitcher_hand_L",
+    "platoon_advantage",
+]
 
 GAME_CONTEXT_FEATURES = ["park_wOBA", "park_HR", "temp", "wind_speed", "indoor"]
 
@@ -43,7 +64,9 @@ _PA_SAMPLE_RATE = 1.0  # can reduce for faster dev
 _handedness: dict[int, dict[str, str]] | None = None
 
 
-def _load_handedness(path: str = "data/simulation/player_handedness.json") -> dict[int, dict[str, str]]:
+def _load_handedness(
+    path: str = "data/simulation/player_handedness.json",
+) -> dict[int, dict[str, str]]:
     global _handedness
     if _handedness is None:
         with open(path) as f:
@@ -55,7 +78,9 @@ def _load_handedness(path: str = "data/simulation/player_handedness.json") -> di
 _game_context: dict[str, dict] | None = None
 
 
-def _load_game_context(path: str = "data/simulation/game_context.json") -> dict[str, dict]:
+def _load_game_context(
+    path: str = "data/simulation/game_context.json",
+) -> dict[str, dict]:
     global _game_context
     if _game_context is None:
         with open(path) as f:
@@ -79,9 +104,13 @@ def _game_window_count_key(prefix: str, window: int) -> str:
     return f"{prefix}_last{window}_games_count"
 
 
-def _all_feature_names(include_context: bool = True, include_platoon: bool = True,
-                       include_game_context: bool = True, include_game_log: bool = True,
-                       include_game_log_rates: bool = True) -> list[str]:
+def _all_feature_names(
+    include_context: bool = True,
+    include_platoon: bool = True,
+    include_game_context: bool = True,
+    include_game_log: bool = True,
+    include_game_log_rates: bool = True,
+) -> list[str]:
     names: list[str] = []
     for w in BATTER_WINDOWS:
         for o in OUTCOME_CLASSES:
@@ -164,8 +193,10 @@ def compute_pbp_features(
     game_accums: dict[int, dict[str, float]] = {}
 
     feature_names = _all_feature_names(
-        include_context=include_context, include_platoon=include_platoon,
-        include_game_context=include_game_context, include_game_log=include_game_log,
+        include_context=include_context,
+        include_platoon=include_platoon,
+        include_game_context=include_game_context,
+        include_game_log=include_game_log,
         include_game_log_rates=include_game_log,
     )
     n_features = len(feature_names)
@@ -321,8 +352,16 @@ def _update_game_accums(accums: dict[int, dict], pa: dict) -> None:
     for player_id in (bid, pid):
         if player_id not in accums:
             accums[player_id] = {
-                "b_hits": 0, "b_hr": 0, "b_bb": 0, "b_k": 0, "b_pa": 0,
-                "p_h_allowed": 0, "p_hr_allowed": 0, "p_bb_allowed": 0, "p_k": 0, "p_pa_faced": 0,
+                "b_hits": 0,
+                "b_hr": 0,
+                "b_bb": 0,
+                "b_k": 0,
+                "b_pa": 0,
+                "p_h_allowed": 0,
+                "p_hr_allowed": 0,
+                "p_bb_allowed": 0,
+                "p_k": 0,
+                "p_pa_faced": 0,
             }
     ba = accums[bid]
     pa_acc = accums[pid]
@@ -360,8 +399,12 @@ def _flush_game_accums(
 class RollingState:
     """Maintain rolling windows and produce feature vectors for any matchup."""
 
-    def __init__(self, game_dates: dict[int, str], handedness_path: str = "data/simulation/player_handedness.json",
-                 game_context_path: str = "data/simulation/game_context.json"):
+    def __init__(
+        self,
+        game_dates: dict[int, str],
+        handedness_path: str = "data/simulation/player_handedness.json",
+        game_context_path: str = "data/simulation/game_context.json",
+    ):
         self.game_dates = game_dates
         self.batter_windows: dict[int, dict[int, deque[str]]] = {}
         self.pitcher_windows: dict[int, dict[int, deque[str]]] = {}
@@ -388,14 +431,18 @@ class RollingState:
         for date, pa in dated:
             gpk = pa["game_pk"]
             if current_gpk is not None and gpk != current_gpk:
-                _flush_game_accums(game_accums, self.batter_game_windows, self.pitcher_game_windows)
+                _flush_game_accums(
+                    game_accums, self.batter_game_windows, self.pitcher_game_windows
+                )
                 game_accums = {}
             current_gpk = gpk
             _update_windows(self.batter_windows, self.pitcher_windows, pa)
             _update_game_accums(game_accums, pa)
             self._processed.add(pa["game_pk"])
         if game_accums:
-            _flush_game_accums(game_accums, self.batter_game_windows, self.pitcher_game_windows)
+            _flush_game_accums(
+                game_accums, self.batter_game_windows, self.pitcher_game_windows
+            )
 
     def feature_vector(
         self,
@@ -427,7 +474,9 @@ class RollingState:
             n_glr += len(BATTER_GAME_WINDOWS) * len(BATTER_GAME_RATE_METRICS)
             n_glr += len(PITCHER_GAME_WINDOWS) * len(PITCHER_GAME_RATE_METRICS)
         n_ctx = 5 if include_context else 0
-        features = np.zeros(n_bat + n_pit + n_plt + n_gcx + n_gl + n_glr + n_ctx, dtype=np.float64)
+        features = np.zeros(
+            n_bat + n_pit + n_plt + n_gcx + n_gl + n_glr + n_ctx, dtype=np.float64
+        )
 
         prior = LEAGUE_OUTCOME_PRIORS
         k = SHRINKAGE_K

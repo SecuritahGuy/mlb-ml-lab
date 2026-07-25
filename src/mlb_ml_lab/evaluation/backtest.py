@@ -609,7 +609,9 @@ def apply_calibrators(
     for i, p in enumerate(predictions):
         s = p.date.year if hasattr(p.date, "year") else int(str(p.date)[:4])
         cal = calibrators.get(s)
-        cal_prob = float(cal.predict([[p.predicted_prob]])[0]) if cal else p.predicted_prob
+        cal_prob = (
+            float(cal.predict([[p.predicted_prob]])[0]) if cal else p.predicted_prob
+        )
         if inplace:
             predictions[i].predicted_prob = round(cal_prob, 4)
         else:
@@ -654,7 +656,7 @@ def calibrate_predictions_crossfit(
         by_season.setdefault(s, []).append((i, p.predicted_prob, p.actual))
 
     result = list(predictions)
-    for season, entries in by_season.items():
+    for _season, entries in by_season.items():
         indices = [e[0] for e in entries]
         raw = np.array([e[1] for e in entries], dtype=float)
         y = np.array([e[2] for e in entries], dtype=float)
@@ -696,7 +698,7 @@ def save_calibrators(calibrators: dict[int, IsotonicRegression], directory: str)
         joblib.dump(ir, path)
         metadata.append({"season": season, "path": path})
 
-    with open(os.path.join(directory, "metadata.json"), "w") as f:
+    with open(os.path.join(directory, "metadata.json"), "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
     return directory
 
@@ -706,12 +708,12 @@ def load_calibrators(directory: str) -> dict[int, IsotonicRegression]:
 
     Args:
         directory: Directory containing ``metadata.json`` and
-                   ``calibrators/``.
+                   ``calibrator_*.joblib`` files.
 
     Returns:
         Dict mapping ``season`` → fitted ``IsotonicRegression``.
     """
-    with open(os.path.join(directory, "metadata.json")) as f:
+    with open(os.path.join(directory, "metadata.json"), encoding="utf-8") as f:
         metadata = json.load(f)
     calibrators: dict[int, IsotonicRegression] = {}
     for entry in metadata:
