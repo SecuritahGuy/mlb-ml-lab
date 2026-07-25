@@ -220,7 +220,7 @@ def get_park_factor(team_id: int, season: int, cache_dir: str | None = None) -> 
     try:
         factor = pf.factor(vid, metric="runs", season=season)
         return factor if factor and factor > 0 else 1.0
-    except Exception:
+    except (OSError, ValueError):
         return 1.0
     finally:
         pf.close()
@@ -317,7 +317,7 @@ def fetch_supplemental_stats(
     cache_dir: str | None = "data/cache/war_supplement",
     use_cache: bool = True,
 ) -> dict[int, dict[str, Any]]:
-    from mlb_ml_lab import MlbClient
+    from mlb_ml_lab.data.client import MlbClient
 
     cache_path = None
     if use_cache and cache_dir:
@@ -347,7 +347,7 @@ def fetch_supplemental_stats(
                     "sb": int(stats.get("stolenBases", 0)),
                     "cs": int(stats.get("caughtStealing", 0)),
                 }
-            except Exception:
+            except (KeyError, TypeError, ValueError):
                 continue
     finally:
         if close_client:
@@ -570,7 +570,7 @@ def compute_all_war(
 
     supplemental: dict[tuple[int, int], dict[str, int]] = {}
     if fetch_supplemental:
-        from mlb_ml_lab import MlbClient
+        from mlb_ml_lab.data.client import MlbClient
 
         client = MlbClient()
         try:
@@ -677,7 +677,7 @@ def fetch_fangraphs_war(
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump(rows, f, indent=2)
         return rows
-    except Exception as e:
+    except (httpx.HTTPError, json.JSONDecodeError, OSError, ValueError) as e:
         logger.warning("Failed to fetch FG WAR for %d: %s", season, e)
         return []
 
@@ -715,7 +715,7 @@ def fetch_all_fg_fielding(
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump({str(k): v for k, v in result.items()}, f, indent=2)
         return result
-    except Exception as e:
+    except (httpx.HTTPError, json.JSONDecodeError, OSError, ValueError) as e:
         logger.warning("Failed to fetch FG fielding for %d: %s", season, e)
         return {}
 

@@ -61,31 +61,31 @@ SHRINKAGE_K = 15
 
 _PA_SAMPLE_RATE = 1.0  # can reduce for faster dev
 
-_handedness: dict[int, dict[str, str]] | None = None
+_HANDEDNESS: dict[int, dict[str, str]] | None = None
 
 
 def _load_handedness(
     path: str = "data/simulation/player_handedness.json",
 ) -> dict[int, dict[str, str]]:
-    global _handedness
-    if _handedness is None:
-        with open(path) as f:
+    global _HANDEDNESS  # pylint: disable=global-statement
+    if _HANDEDNESS is None:
+        with open(path, encoding="utf-8") as f:
             raw = json.load(f)
-        _handedness = {int(k): v for k, v in raw.items()}
-    return _handedness
+        _HANDEDNESS = {int(k): v for k, v in raw.items()}
+    return _HANDEDNESS
 
 
-_game_context: dict[str, dict] | None = None
+_GAME_CONTEXT: dict[str, dict] | None = None
 
 
 def _load_game_context(
     path: str = "data/simulation/game_context.json",
 ) -> dict[str, dict]:
-    global _game_context
-    if _game_context is None:
-        with open(path) as f:
-            _game_context = json.load(f)
-    return _game_context
+    global _GAME_CONTEXT  # pylint: disable=global-statement
+    if _GAME_CONTEXT is None:
+        with open(path, encoding="utf-8") as f:
+            _GAME_CONTEXT = json.load(f)
+    return _GAME_CONTEXT
 
 
 def _window_key(prefix: str, window: int, outcome: str) -> str:
@@ -264,9 +264,9 @@ def compute_pbp_features(
             features[col + 1] = 1.0 if bh == "L" else 0.0
             features[col + 2] = 1.0 if ph == "R" else 0.0
             features[col + 3] = 1.0 if ph == "L" else 0.0
-            if bh == "S" or bh == "?":
+            if bh in ("S", "?"):
                 features[col + 4] = 1.0
-            elif ph == "?" or ph == "S":
+            elif ph in ("?", "S"):
                 features[col + 4] = 0.0
             else:
                 features[col + 4] = 1.0 if bh != ph else 0.0
@@ -510,9 +510,9 @@ class RollingState:
             features[col + 1] = 1.0 if bh == "L" else 0.0
             features[col + 2] = 1.0 if ph == "R" else 0.0
             features[col + 3] = 1.0 if ph == "L" else 0.0
-            if bh == "S" or bh == "?":
+            if bh in ("S", "?"):
                 features[col + 4] = 1.0
-            elif ph == "?" or ph == "S":
+            elif ph in ("?", "S"):
                 features[col + 4] = 0.0
             else:
                 features[col + 4] = 1.0 if bh != ph else 0.0

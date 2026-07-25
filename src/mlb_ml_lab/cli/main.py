@@ -107,7 +107,7 @@ def cmd_fetch(args: argparse.Namespace) -> None:
                 raw = client.get_player_game_log(pid, season=s)
                 for split in raw:
                     all_game_logs.append(PlayerGameLog.from_split_dict(split))
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
     print(f"  {len(all_game_logs)} game log rows")
@@ -286,7 +286,7 @@ def cmd_predict(args: argparse.Namespace) -> None:
             raw = client.get_player_game_log(pid, season=args.season)
             for split in raw:
                 all_game_logs.append(PlayerGameLog.from_split_dict(split))
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
     print(f"  {len(all_game_logs)} game log rows")
 
@@ -391,7 +391,7 @@ def cmd_backtest(args: argparse.Namespace) -> None:
             print(
                 f"  Overall AUC: {auc:.4f}  ECE: {ece:.4f}  ({len(predictions)} predictions)"
             )
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
         if args.calibrate:
@@ -402,7 +402,7 @@ def cmd_backtest(args: argparse.Namespace) -> None:
                 auc_cal = roc_auc_score([p.actual for p in cal_preds], y_prob_cal)
                 ece_cal = expected_calibration_error(cal_preds, n_bins=10)
                 print(f"  Calibrated AUC: {auc_cal:.4f}  ECE: {ece_cal:.4f}")
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
             result_preds = cal_preds
         else:
@@ -522,7 +522,7 @@ def cmd_e2e(args: argparse.Namespace) -> None:
             try:
                 ctx = client.get_game_context(log.game_pk)
                 schedule_lookup[log.game_pk] = ctx
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 schedule_lookup[log.game_pk] = {}
 
     opp_ids = list({log.opponent_id for log in all_game_logs})

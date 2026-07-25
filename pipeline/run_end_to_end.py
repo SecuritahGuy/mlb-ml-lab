@@ -4,7 +4,7 @@ Usage:
     poetry run python pipeline/run_end_to_end.py
 
 Configurable constants at the top of the file (``TEAM_ID``, ``SEASON``,
-``MAX_PLAYERS``, etc.).
+``MAX_PLAYERS``, ``SAMPLE_GAMES``, etc.).
 """
 
 from __future__ import annotations
