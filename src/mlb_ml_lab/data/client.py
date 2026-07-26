@@ -819,8 +819,8 @@ class MlbClient:
             limit: Number of leaders per category.
 
         Returns:
-            List of leader entries, each with ``leader`` (person dict),
-            ``value``, ``rank``.
+            List of flattened leader entries, each with ``rank``,
+            ``value``, ``person``, ``team``, ``leaderCategory``.
         """
         if leader_categories is None:
             leader_categories = ["battingAverage"]
@@ -832,7 +832,13 @@ class MlbClient:
                 "limit": limit,
             },
         )
-        return data.get("teamLeaders", [])
+        leaders: list[dict[str, Any]] = []
+        for category in data.get("teamLeaders", []):
+            cat_name = category.get("leaderCategory", "")
+            for entry in category.get("leaders", []):
+                entry["leaderCategory"] = cat_name
+                leaders.append(entry)
+        return leaders
 
     # ------------------------------------------------------------------
     # Game Pace
@@ -1003,6 +1009,129 @@ class MlbClient:
             },
         )
         return data.get("streaks", [])
+
+    # ------------------------------------------------------------------
+    # Bulk Player Lookup
+    # ------------------------------------------------------------------
+
+    def get_people_bulk(
+        self, person_ids: list[int], season: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch details for multiple players in one request.
+
+        Args:
+            person_ids: List of MLBAM player IDs.
+            season: Optional season for team hydration.
+
+        Returns:
+            List of player dicts (same shape as ``get_player``).
+        """
+        params: dict[str, Any] = {
+            "personIds": ",".join(str(pid) for pid in person_ids)
+        }
+        if season is not None:
+            params["season"] = season
+        data = self._get("/people", params=params)
+        return data.get("people", [])
+
+    # ------------------------------------------------------------------
+    # Multi-Season Player Stats
+    # ------------------------------------------------------------------
+
+    def get_player_multi_season_stats(
+        self, player_id: int, group: str = "hitting"
+    ) -> list[dict[str, Any]]:
+        """Fetch season-by-season stats for a player's career.
+
+        Args:
+            player_id: MLBAM player ID.
+            group: ``\"hitting\"`` or ``\"pitching\"``.
+
+        Returns:
+            List of stat dicts, each with ``season``, ``stat``, ``team``.
+        """
+        data = self._get(
+            f"/people/{player_id}/stats",
+            params={
+                "stats": "season",
+                "group": group,
+                "type": "seasonBySeason",
+            },
+        )
+        stats = data.get("stats", [])
+        if not stats:
+            return []
+        return stats[0].get("splits", [])
+
+    # ------------------------------------------------------------------
+    # Divisions, Leagues, Seasons (metadata)
+    # ------------------------------------------------------------------
+
+    def get_divisions(self, sport_id: int = 1) -> list[dict[str, Any]]:
+        """Fetch all divisions for a sport."""
+        data = self._get("/divisions", params={"sportId": sport_id})
+        return data.get("divisions", [])
+
+    def get_leagues(self, sport_id: int = 1) -> list[dict[str, Any]]:
+        """Fetch all leagues for a sport."""
+        data = self._get("/leagues", params={"sportId": sport_id})
+        return data.get("leagues", [])
+
+    def get_seasons(self, sport_id: int = 1) -> list[dict[str, Any]]:
+        """Fetch all available seasons for a sport."""
+        data = self._get("/seasons", params={"sportId": sport_id})
+        return data.get("seasons", [])
+
+    # ------------------------------------------------------------------
+    # Umpires
+    # ------------------------------------------------------------------
+
+    def get_umpires(self, season: int | None = None) -> list[dict[str, Any]]:
+        """Fetch the umpire roster.
+
+        Args:
+            season: Optional season year filter.
+
+        Returns:
+            List of umpire entries, each with ``person`` (id, fullName),
+            ``jerseyNumber``, ``job``, ``title``.
+        """
+        params: dict[str, Any] = {}
+        if season is not None:
+            params["season"] = season
+        data = self._get("/jobs/umpires", params=params)
+        return data.get("roster", [])
+
+    # ------------------------------------------------------------------
+    # Game Win Probability
+    # ------------------------------------------------------------------
+
+    def get_game_win_probability(self, game_pk: int) -> list[dict[str, Any]]:
+        """Fetch play-by-play win probability data for a completed game.
+
+        Returns:
+            List of play events, each with ``homeWinProbability``,
+            ``awayWinProbability``, ``about`` (inning, outs, etc.),
+            ``result`` (event, description).
+        """
+        data = self._get(f"/game/{game_pk}/winProbability")
+        if isinstance(data, list):
+            return data
+        return data.get("winProbability", [])
+
+    # ------------------------------------------------------------------
+    # Game Linescore
+    # ------------------------------------------------------------------
+
+    def get_game_linescore(self, game_pk: int) -> dict[str, Any]:
+        """Fetch current or final linescore for a game.
+
+        Returns:
+            Dict with keys: ``currentInning``, ``inningState``,
+            ``isTopInning``, ``innings`` (list of inning-by-inning
+            lines), ``teams`` (home/away runs, hits, errors).
+        """
+        return self._get(f"/game/{game_pk}/linescore")
 
     # ------------------------------------------------------------------
     # Internal
