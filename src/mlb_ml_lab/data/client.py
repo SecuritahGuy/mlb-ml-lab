@@ -741,6 +741,97 @@ class MlbClient:
         return self._get(f"/game/{game_pk}/contextMetrics")
 
     # ------------------------------------------------------------------
+    # Transactions / Injuries
+    # ------------------------------------------------------------------
+
+    _IL_PLACEMENT_PATTERNS = ("placed", "transferred")
+    _IL_ACTIVATION_PATTERNS = ("activated", "reinstated")
+    _IL_MARKERS = ("injured list", "il", "day-to-day")
+
+    def get_transactions(
+        self,
+        season: int,
+        team_id: int | None = None,
+        transaction_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch transactions for the league or a specific team.
+
+        Args:
+            season: Season year.
+            team_id: Optional team ID to filter by.
+            transaction_type: Optional transaction type code
+                (e.g. ``\"SC\"`` for status changes).
+
+        Returns:
+            List of transaction dicts with keys like ``person``,
+            ``fromTeam``, ``toTeam``, ``typeCode``, ``description``,
+            ``date``, ``effectiveDate``.
+        """
+        start = f"{season}-03-01"
+        end = f"{season}-11-01"
+        params: dict[str, Any] = {
+            "startDate": start,
+            "endDate": end,
+            "sportId": 1,
+        }
+        if team_id is not None:
+            params["teamId"] = team_id
+        if transaction_type:
+            params["type"] = transaction_type
+        data = self._get("/transactions", params=params)
+        return data.get("transactions", [])
+
+    def get_player_transactions(
+        self, player_id: int, season: int
+    ) -> list[dict[str, Any]]:
+        """Fetch all transactions for a specific player in a season."""
+        start = f"{season}-03-01"
+        end = f"{season}-11-01"
+        data = self._get(
+            f"/people/{player_id}/transactions",
+            params={"startDate": start, "endDate": end},
+        )
+        return data.get("transactions", [])
+
+    def get_full_roster(
+        self, team_id: int, season: int, date: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch the full roster (incl. IL, DTD) for a team.
+
+        Args:
+            team_id: Team ID.
+            season: Season year.
+            date: Optional ISO date (``\"2024-07-01\"``) to query
+                historical roster state.
+
+        Returns:
+            List of roster entries, each with ``person``, ``status``
+            (code + description), ``position``.
+        """
+        params: dict[str, Any] = {"season": season, "rosterType": "fullRoster"}
+        if date:
+            params["date"] = date
+        data = self._get(f"/teams/{team_id}/roster", params=params)
+        return data.get("roster", [])
+
+    @staticmethod
+    def classify_transaction(txn: dict[str, Any]) -> str:
+        """Classify a transaction dict into a category."""
+        desc = txn.get("description", "").lower()
+        has_il = any(m in desc for m in ("injured list", "il", "day-to-day"))
+        has_placed = any(p in desc for p in ("placed", "transferred"))
+        if has_il and has_placed:
+            return "il_placement"
+        if has_il and any(a in desc for a in ("activated", "reinstated")):
+            return "il_activation"
+        for cat in ("rehab", "paternity", "bereavement"):
+            if cat in desc:
+                return cat
+        if "suspended" in desc:
+            return "suspension"
+        return "other"
+
+    # ------------------------------------------------------------------
     # Player Streaks
     # ------------------------------------------------------------------
 

@@ -688,12 +688,24 @@ def main() -> None:
     team_leaders = fetch_team_leaders(client, all_team_ids, SEASONS)
     print(f"  {len(team_leaders)} team×season leader sets")
 
-    # ── Stage 12: Build Feature Matrix ───────────────────────────────────
-    print("\n=== Stage 12: Building Feature Matrix ===")
-
     # ── Stage 11c: SBR odds for market features ───────────────────────
     print("\n=== Stage 11c: Market Odds (SBR) ===")
     odds_by_game = build_odds_by_game(game_logs, teams)
+
+    # ── Stage 11d: Injury / IL data ────────────────────────────────────────
+    print("\n=== Stage 11d: Injury/IL Data ===")
+    all_injury_txns: list[dict[str, Any]] = []
+    for s in SEASONS:
+        txn = client.get_transactions(season=s)
+        all_injury_txns.extend(txn)
+        print(f"  {s}: {len(txn)} transactions")
+    from mlb_ml_lab.features.injuries import build_player_timelines
+    player_timelines = build_player_timelines(all_injury_txns)
+    injury_data = {"player_timelines": player_timelines}
+    print(f"  → {len(player_timelines)} players with IL history")
+
+    # ── Stage 12: Build Feature Matrix ───────────────────────────────────
+    print("\n=== Stage 12: Building Feature Matrix ===")
 
     # We need to build per-season so game_contexts match
     all_feature_rows: list[dict[str, Any]] = []
@@ -755,6 +767,7 @@ def main() -> None:
                 "game_pace_stats": s_game_pace,
                 "team_leaders": s_team_leaders,
                 "odds_by_game": odds_by_game,
+                "injury_data": injury_data,
             },
         )
         tgt = make_targets(season_logs)
