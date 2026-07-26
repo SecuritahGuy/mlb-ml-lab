@@ -24,6 +24,11 @@ class StartingPitcherFeatures(FeatureExtractor):
     def features(self) -> list[FeatureMeta]:
         return [
             FeatureMeta(
+                name="opp_pitcher_id",
+                description="MLBAM ID of the opposing starting pitcher",
+                source="pitching",
+            ),
+            FeatureMeta(
                 name="opp_pitcher_era",
                 description="Opposing starter ERA (prev season or season-to-date)",
                 source="pitching",
@@ -98,6 +103,7 @@ class StartingPitcherFeatures(FeatureExtractor):
                     "player_id": log.player_id,
                     "game_pk": log.game_pk,
                     "date": log.date,
+                    "opp_pitcher_id": opp_pitcher_id,
                     "opp_pitcher_era": _float_or_none(pstats.get("era")),
                     "opp_pitcher_k_per_9": _float_or_none(
                         pstats.get("strikeoutsPer9Inn")

@@ -560,6 +560,31 @@ class MlbClient:
 
         return self._fetch_savant_csv("/statcast_search/csv", params=params)
 
+    def get_pitcher_statcast_data(
+        self, season: int, min_pitches: int = 100
+    ) -> list[dict[str, str]]:
+        """Fetch season-level statcast aggregates for all pitchers.
+
+        Returns one row per pitcher with metrics like velocity, whiff
+        rate, hard-hit %, barrel %, xwOBA, etc.
+
+        Args:
+            season: Season year.
+            min_pitches: Minimum pitches threshold.
+
+        Returns:
+            List of dicts keyed by ``player_id`` with statcast metrics.
+        """
+        return self._fetch_savant_csv(
+            "/statcast_search/csv",
+            params={
+                "player_type": "pitcher",
+                "season": season,
+                "min_pitches": min_pitches,
+                "all": "true",
+            },
+        )
+
     # ------------------------------------------------------------------
     # Team Bullpen Stats (reliever-only pitching)
     # ------------------------------------------------------------------
