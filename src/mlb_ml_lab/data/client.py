@@ -400,12 +400,16 @@ class MlbClient:
     # Standings
     # ------------------------------------------------------------------
 
-    def get_standings(self, season: int, league_id: int = 103) -> list[dict[str, Any]]:
+    def get_standings(
+        self, season: int, league_id: int = 103, date: str | None = None
+    ) -> list[dict[str, Any]]:
         """Fetch division standings for a league.
 
         Args:
             season: Season year.
             league_id: 103 = AL, 104 = NL.
+            date: Optional ISO date (``\"2024-07-01\"``) for historical
+                  standings.
 
         Returns:
             List of record dicts sorted by division. Each dict includes
@@ -413,10 +417,10 @@ class MlbClient:
             ``gamesBack``, ``wildCardGamesBack``, ``runsScored``,
             ``runsAllowed``, ``streak``, ``records`` (home/away/last10).
         """
-        data = self._get(
-            "/standings",
-            params={"leagueId": league_id, "season": season},
-        )
+        params: dict[str, Any] = {"leagueId": league_id, "season": season}
+        if date:
+            params["date"] = date
+        data = self._get("/standings", params=params)
         records: list[dict[str, Any]] = []
         for division in data.get("records", []):
             for tr in division.get("teamRecords", []):
@@ -427,6 +431,115 @@ class MlbClient:
                 }
                 records.append(tr)
         return records
+
+    def get_player_awards(self, player_id: int) -> list[dict[str, Any]]:
+        """Fetch all awards won by a player.
+
+        Args:
+            player_id: MLBAM player ID.
+
+        Returns:
+            List of award dicts with ``id``, ``name``, ``date``,
+            ``season``, ``team``, ``votes``, ``notes``, etc.
+        """
+        data = self._get(f"/people/{player_id}/awards")
+        return data.get("awards", [])
+
+    def get_attendance(
+        self, season: int, team_id: int | None = None
+    ) -> dict[str, Any]:
+        """Fetch attendance data for a season.
+
+        Args:
+            season: Season year.
+            team_id: Optional team ID filter.
+
+        Returns:
+            Dict with ``records`` (per-game attendance) and
+            ``aggregateTotals`` (season totals).
+        """
+        params: dict[str, Any] = {"season": season}
+        if team_id is not None:
+            params["teamId"] = team_id
+        return self._get("/attendance", params=params)
+
+    def get_stat_leaders(
+        self,
+        season: int,
+        leader_categories: str = "hits",
+        stat_group: str = "hitting",
+        sport_id: int = 1,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Fetch league stat leaders.
+
+        Args:
+            season: Season year.
+            leader_categories: Comma-separated stat categories
+                (e.g. ``\"hits,homeRuns\"``).
+            stat_group: ``\"hitting\"``, ``\"pitching\"``, ``\"fielding\"``.
+            sport_id: MLB = 1.
+            limit: Max results.
+
+        Returns:
+            List of leader entries, each with ``rank``, ``value``,
+            ``person``, ``team``.
+        """
+        data = self._get(
+            "/stats/leaders",
+            params={
+                "leaderCategories": leader_categories,
+                "statGroup": stat_group,
+                "season": season,
+                "sportId": sport_id,
+                "limit": limit,
+            },
+        )
+        leaders: list[dict[str, Any]] = []
+        for category in data.get("leagueLeaders", []):
+            cat_name = category.get("leaderCategory", "")
+            for entry in category.get("leaders", []):
+                entry["leaderCategory"] = cat_name
+                leaders.append(entry)
+        return leaders
+
+    def get_high_low(
+        self,
+        org_type: str = "player",
+        stat_group: str = "hitting",
+        sort_stat: str = "hits",
+        season: int = 2024,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Fetch season statistical highs/lows.
+
+        Args:
+            org_type: ``\"player\"``, ``\"team\"``, ``\"division\"``,
+                ``\"league\"``, ``\"sport\"``.
+            stat_group: ``\"hitting\"``, ``\"pitching\"``, ``\"fielding\"``.
+            sort_stat: Stat to sort by (e.g. ``\"hits\"``, ``\"era\"``).
+            season: Season year.
+            limit: Max results.
+
+        Returns:
+            List of stat entries sorted descending.
+        """
+        data = self._get(
+            f"/highLow/{org_type}",
+            params={
+                "statGroup": stat_group,
+                "sortStat": sort_stat,
+                "season": season,
+                "limit": limit,
+            },
+        )
+        results = data.get("highLowResults", [])
+        splits: list[dict[str, Any]] = []
+        for hr in results:
+            splits.extend(hr.get("splits", []))
+        # Sort by rank
+        splits.sort(key=lambda s: s.get("rank", 999))
+        return splits[:limit]
 
     # ------------------------------------------------------------------
     # Game Boxscore
