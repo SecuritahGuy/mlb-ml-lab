@@ -17,6 +17,7 @@ import mlb_ml_lab.features.gamepace  # noqa: F401
 import mlb_ml_lab.features.teamleaders  # noqa: F401
 import mlb_ml_lab.features.odds_features  # noqa: F401
 import mlb_ml_lab.features.team_trends  # noqa: F401
+import mlb_ml_lab.features.umpire  # noqa: F401
 
 from mlb_ml_lab.features.assemble import (
     build_feature_matrix,

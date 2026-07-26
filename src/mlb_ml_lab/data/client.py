@@ -135,7 +135,7 @@ class MlbClient:
                 "sportId": sport_id,
                 "season": season,
                 "gameType": game_type,
-                "hydrate": "probablePitcher,venue",
+                "hydrate": "probablePitcher,venue,officials",
             },
         )
 
@@ -149,6 +149,13 @@ class MlbClient:
                 dt = game.get("datetime", {}) or {}
                 home_team = teams_data.get("home", {}) or {}
                 away_team = teams_data.get("away", {}) or {}
+                # Extract HP umpire from officials
+                officials = game.get("officials", []) or []
+                hp_umpire: dict[str, Any] | None = None
+                for off in officials:
+                    if off.get("officialType") == "Home Plate":
+                        hp_umpire = off.get("official", {}) or {}
+                        break
                 lookup[pk] = {
                     "game_pk": pk,
                     "game_datetime": game.get("gameDate"),
@@ -163,6 +170,8 @@ class MlbClient:
                     "away_probable_pitcher_id": (
                         (away_team.get("probablePitcher", {}) or {}).get("id")
                     ),
+                    "hp_umpire_id": (hp_umpire or {}).get("id"),
+                    "hp_umpire_name": (hp_umpire or {}).get("fullName"),
                 }
         return lookup
 
@@ -1085,6 +1094,25 @@ class MlbClient:
     # ------------------------------------------------------------------
     # Umpires
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def count_umpire_games(
+        schedule: dict[int, dict[str, Any]],
+    ) -> dict[int, int]:
+        """Count how many games each HP umpire worked in a schedule.
+
+        Args:
+            schedule: Output of ``get_enriched_schedule()``.
+
+        Returns:
+            Dict mapping ``umpire_id → game_count``.
+        """
+        counts: dict[int, int] = {}
+        for ctx in schedule.values():
+            ump_id = ctx.get("hp_umpire_id")
+            if ump_id is not None:
+                counts[ump_id] = counts.get(ump_id, 0) + 1
+        return counts
 
     def get_umpires(self, season: int | None = None) -> list[dict[str, Any]]:
         """Fetch the umpire roster.

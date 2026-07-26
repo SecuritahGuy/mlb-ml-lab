@@ -5,7 +5,7 @@ All features produced by registered `FeatureExtractor`s in
 `(player_id, game_pk, date)` — each extractor adds its columns to
 the same row.
 
-26 extractors produce ~130 feature columns.
+27 extractors produce ~132 feature columns.
 
 ---
 
@@ -420,7 +420,24 @@ Historical weather at game time from MLB Stats API.
 
 ---
 
-## 26. WeatherForecastFeatures (`forecast`)
+## 27. UmpireFeatures (`umpire`)
+
+Home-plate umpire identity and experience proxy. HP umpire is the most
+consequential official — their strike zone tendencies affect pitcher/batter
+outcomes.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `hp_umpire_id` | int | MLBAM ID of the home-plate umpire |
+| `umpire_game_count` | int | Games this HP umpire has worked this season |
+
+**Source**: MLB Stats API schedule hydration (`officials` hydrate on
+`/schedule`), no extra API calls. Game counts come from
+`MlbClient.count_umpire_games()`.
+
+---
+
+## 28. WeatherForecastFeatures (`forecast`)
 
 Forecast weather from National Weather Service API.
 

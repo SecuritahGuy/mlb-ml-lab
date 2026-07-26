@@ -128,6 +128,7 @@ def cmd_fetch(args: argparse.Namespace) -> None:
 
     print("Building feature matrix...")
     season_schedule = list(schedule_lookups.values())
+    umpire_game_counts = client.count_umpire_games(schedule_lookups)
     feature_matrix = build_feature_matrix(
         all_game_logs,
         teams=all_teams,
@@ -137,6 +138,7 @@ def cmd_fetch(args: argparse.Namespace) -> None:
             "monthly_pitching": monthly_pitching,
             "team_fielding": team_fielding,
             "season_schedule": season_schedule,
+            "umpire_game_counts": umpire_game_counts,
         },
     )
     print(f"  {len(feature_matrix)} feature rows")
@@ -297,6 +299,7 @@ def cmd_predict(args: argparse.Namespace) -> None:
         client.get_team_pitching_monthly_stats(opp_ids, args.season) or {}
     )
     team_fielding = client.get_team_fielding_stats(opp_ids, args.season) or {}
+    umpire_game_counts = client.count_umpire_games(schedule_lookup)
 
     print("Building feature matrix...")
     feature_matrix = build_feature_matrix(
@@ -308,6 +311,7 @@ def cmd_predict(args: argparse.Namespace) -> None:
             "monthly_pitching": monthly_pitching,
             "team_fielding": team_fielding,
             "season_schedule": list(schedule_lookup.values()),
+            "umpire_game_counts": umpire_game_counts,
         },
     )
     print(f"  {len(feature_matrix)} rows")
@@ -531,6 +535,7 @@ def cmd_e2e(args: argparse.Namespace) -> None:
         client.get_team_pitching_monthly_stats(opp_ids, args.season) or {}
     )
     team_fielding = client.get_team_fielding_stats(opp_ids, args.season) or {}
+    umpire_game_counts = client.count_umpire_games(schedule_lookup)
 
     feature_matrix = build_feature_matrix(
         all_game_logs,
@@ -541,6 +546,7 @@ def cmd_e2e(args: argparse.Namespace) -> None:
             "monthly_pitching": monthly_pitching,
             "team_fielding": team_fielding,
             "season_schedule": list(schedule_lookup.values()),
+            "umpire_game_counts": umpire_game_counts,
         },
     )
     print(f"  {len(feature_matrix)} feature rows")
