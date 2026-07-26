@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mlb-ml-lab"
-version = "0.2.2"
+version = "0.3.0"
 description = "MLB prediction models and data tools"
 authors = ["Tim Hollingsworth"]
 license = "MIT"
