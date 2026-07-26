@@ -301,6 +301,15 @@ DEFAULT_PARAM_GRIDS: dict[str, dict[str, list[Any]]] = {
         "min_child_weight": [1, 3, 5],
         "num_leaves": [15, 31, 63],
     },
+    "cb": {
+        "iterations": [100, 200, 300, 500],
+        "depth": [3, 5, 7, 9],
+        "learning_rate": [0.01, 0.05, 0.1, 0.2],
+        "subsample": [0.7, 0.8, 1.0],
+        "colsample_bylevel": [0.7, 0.8, 1.0],
+        "min_data_in_leaf": [1, 3, 5],
+        "l2_leaf_reg": [1, 3, 5, 10],
+    },
 }
 
 
