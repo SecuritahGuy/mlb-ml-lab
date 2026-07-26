@@ -9,8 +9,8 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 - Python 3.12, Poetry, `src/mlb_ml_lab/` package layout
 - pytest (run: `poetry run pytest`)
 - Type hints expected; no strict type checker configured yet
-- All AI inference goes through local LM Studio at `http://127.0.0.1:1234/v1` — never call cloud APIs
-- MLX (Apple Silicon GPU) for neural models; sklearn (CPU) for LR/XGB/RF/LGBM
+- All AI inference goes through local LLMs (LM Studio at `http://127.0.0.1:1234/v1` or Ollama at `http://localhost:11434/v1`) — never call cloud APIs
+- MLX (Apple Silicon GPU) for neural models; sklearn (CPU) for LR/XGB/RF/LGBM/CB
 
 ## Commands
 
@@ -26,10 +26,10 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 | Run pylint | `poetry run pylint src/mlb_ml_lab/ tests/ pipeline/` |
 | Run formatter | `poetry run ruff format .` |
 | Typecheck | Not yet configured |
-| Run full backtest (ensemble) | `mlb backtest --model lr,xgb,rf,lgb` |
-| Run calibrated backtest | `mlb backtest --model lr,xgb,rf,lgb --calibrate` |
-| Save calibrators for live betting | `mlb backtest --model lr,xgb,rf,lgb --save-calibrators` |
-| Generate daily bets (with calibration) | `mlb bet --date YYYY-MM-DD --calibrator-dir data/models/calibrators_lr+xgb+rf+lgb_target_0.5 --threshold 0.65` |
+| Run full backtest (ensemble) | `mlb backtest --model lr,xgb,rf,lgb,cb` |
+| Run calibrated backtest | `mlb backtest --model lr,xgb,rf,lgb,cb --calibrate` |
+| Save calibrators for live betting | `mlb backtest --model lr,xgb,rf,lgb,cb --save-calibrators` |
+| Generate daily bets (with calibration) | `mlb bet --date YYYY-MM-DD --calibrator-dir data/models/calibrators_lr+xgb+rf+lgb+cb_target_0.5 --threshold 0.65` |
 | Settle yesterday's bets | `mlb bet --settle` |
 | Track P&L | `mlb bet --pnl` |
 | Bench MLX GPU speed | `poetry run python pipeline/benchmark_mlx.py` |
@@ -37,6 +37,8 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 | Compute WAR (all seasons) | `poetry run python experiments/compute_war.py --min-pa 200 --save data/out/war_all.json` |
 | Compute WAR + advanced metrics | `poetry run python experiments/compute_war.py --season 2024 --metrics --archetypes` |
 | Compute WAR (all seasons) | `poetry run python experiments/compute_war.py --min-pa 200 --save data/out/war_all.json` |
+| LLM misprediction analysis | `poetry run python pipeline/llm_misprediction.py` |
+| LLM misprediction (Ollama) | `poetry run python pipeline/llm_misprediction.py --provider ollama --model gemma4:e4b` |
 
 ### CLI
 
@@ -62,6 +64,7 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 
 ## Key Results
 
+- **CatBoost** (AUC 0.6313) beats XGB (0.600) by +3.2 bps and LGBM (0.623) by +0.8 bps in standalone walk-forward backtest. Best single model.
 - **Ensemble (LR+XGB+RF+LGBM) target_0.5**: AUC 0.636, **+22.5% ROI** at 0.55 threshold, **+37%** at 0.70 (306K→45K bets)
 - **Noise features dropped**: 32 statcast/weather features filtered out; no AUC impact (model robust to noise)
 - **Target_1.5**: not viable (33 bets, -36% ROI)
@@ -87,6 +90,11 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 | `experiments/compute_war.py` | CLI entry point for WAR + advanced metrics computation |
 | `pipeline/benchmark_mlx.py` | MLX GPU training speed benchmarks |
 | `data/models/ensemble_0_5/` | 4 trained ensemble components (gitignored) |
+| `pipeline/llm_misprediction.py` | LLM misprediction analysis (local LLM + prompt + concurrency) |
+| `src/mlb_ml_lab/models/regime.py` | `RegimeSwitchingClassifier` — experiment (baseline better) |
+| `experiments/interaction_features.py` | Interaction feature backtest (0 AUC gain) |
+| `experiments/backtest_catboost.py` | CatBoost walk-forward (wins by +3.2 bps) |
+| `experiments/explore_targets.py` | New target exploration (walks AUC 0.617 best) |
 
 ## Gotchas
 

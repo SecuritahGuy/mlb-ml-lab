@@ -11,6 +11,7 @@ from typing import Any
 
 import joblib
 import numpy as np
+from catboost import CatBoostClassifier
 from lightgbm import LGBMClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
@@ -118,6 +119,14 @@ _BASE_PARAMS: dict[str, dict[str, Any]] = {
         "verbosity": -1,
         "deterministic": True,
     },
+    "cb": {
+        "iterations": 300,
+        "learning_rate": 0.05,
+        "depth": 5,
+        "logging_level": "Silent",
+        "allow_writing_files": False,
+        "thread_count": -1,
+    },
     "mlx": {
         "hidden_dims": (256, 128, 64),
         "dropout_prob": 0.3,
@@ -136,6 +145,7 @@ _MODEL_CLASSES: dict[str, Any] = {
     "xgb": XGBClassifier,
     "rf": RandomForestClassifier,
     "lgb": LGBMClassifier,
+    "cb": CatBoostClassifier,
 }
 
 
@@ -154,8 +164,11 @@ def _build_model(
     if model_cls is None:
         raise ValueError(f"Unknown model type: {model_type}")
     kwargs = _BASE_PARAMS.get(model_type, {}).copy()
-    kwargs["random_state"] = seed
-    kwargs["n_jobs"] = -1
+    if model_type == "cb":
+        kwargs["random_seed"] = seed
+    else:
+        kwargs["random_state"] = seed
+        kwargs["n_jobs"] = -1
     if params:
         kwargs.update(params)
     if model_type == "lgb":
@@ -250,6 +263,7 @@ MODEL_HELP = {
     "xgb": "XGBoost",
     "rf": "RandomForest",
     "lgb": "LightGBM",
+    "cb": "CatBoost",
     "mlx": "MLX-MLP",
 }
 

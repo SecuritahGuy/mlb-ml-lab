@@ -13,6 +13,7 @@ from mlb_ml_lab.data.schemas import (
     TeamInfo,
     VenueInfo,
 )
+from mlb_ml_lab.data.player_ids import PlayerIdResolver
 from mlb_ml_lab.data.weather import INDOOR_VENUES, NwsWeather
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "ParkFactors",
     "PlayerDetail",
     "PlayerGameLog",
+    "PlayerIdResolver",
     "RosterPlayer",
     "StandingRecord",
     "TeamInfo",

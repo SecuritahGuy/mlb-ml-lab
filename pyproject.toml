@@ -29,6 +29,8 @@ mlx = {version = "^0.32.0", markers = "sys_platform == 'darwin'"}
 pandas = "^2.2"
 meteostat = "^1.6"
 pyarrow = "^25.0.0"
+openai = "^2.48.0"
+catboost = "^1.2.10"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8"
