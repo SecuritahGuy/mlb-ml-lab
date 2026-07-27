@@ -650,7 +650,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--models",
         nargs="+",
         default=["lgb", "xgb"],
-        choices=["lr", "xgb", "rf", "lgb", "cb", "mlx", "ebm"],
+        choices=["lr", "xgb", "rf", "et", "hgb", "lgb", "cb", "mlx", "ebm"],
     )
     p_tune.add_argument("--trials", type=int, default=12)
     p_tune.add_argument("--folds", type=int, default=4)

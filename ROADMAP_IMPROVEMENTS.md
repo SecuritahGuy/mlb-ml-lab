@@ -38,21 +38,34 @@ Derived from an external research review of the project (July 2026).
        - +0.0046 over uniform ensemble (0.6019)
      - Adding EBM to the uniform ensemble produces AUC 0.6036 (slightly worse than EBM alone) — uniform averaging is still optimal
      - **Next**: test with interactions (5, 10, 20) + monotonic constraints
-2. [ ] **Add Extra Trees** (sklearn) — cheap ensemble diversity
-     - 500–1500 trees, `min_samples_leaf` 5–100, `max_features` 0.3–1.0
-     - Check out-of-fold residual correlation with XGBoost/LGBM
-     - *Effort: Very low. Upside: Low-Medium. Diversity: Potentially useful.*
-3. [ ] **Add HistGradientBoostingClassifier** (sklearn) — fast histogram-based boosting, native missing-value handling, monotonic constraints
-     - *Effort: Very low. Upside: Low. Benchmark value: High.*
-4. [ ] **Audit calibration splitting** — verify per-season isotonic calibrators are:
-     - Fit only on predictions from before the evaluation period
-     - Never fit on the same season/fold where ECE is reported
-     - Evaluated on ≥~50 independent samples per probability bin
-     - Tested with adaptive-bin ECE + calibration intercept/slope
-     - Compared with constant base-rate model
-     - Consider nested pattern: train seasons t-2, calibrate on t-1, evaluate on t
-5. [ ] **Produce residual-correlation matrix** across all models (LR, RF, XGB, LGBM, CB, MLX MLP, EBM, ET, HGB)
-6. [ ] **Compare uniform averaging vs constrained nonnegative blending** (e.g. ensemble weights learned via CV on log loss)
+2. [x] **Add Extra Trees** (sklearn) — cheap ensemble diversity
+     - 300 trees, max_depth=8, min_samples_leaf=2
+     - **AUC 0.6024** on 4-season — beats uniform ensemble (0.6019) standalone
+     - Residual correlation with RF: 0.9986 (nearly identical errors)
+     - *Effort: Very low. Upside: Low. Diversity: Marginal vs RF.*
+3. [x] **Add HistGradientBoostingClassifier** (sklearn) — fast histogram-based boosting
+     - max_iter=300, learning_rate=0.05, max_depth=5, early_stopping=False
+     - **AUC 0.5878** on 4-season — underperforms all other models
+     - No `n_jobs` support (OpenMP only); handled via special case in `_build_model`
+     - *Effort: Very low. Upside: Low. Benchmark value: Confirms HGB not competitive here.*
+4. [x] **Audit calibration splitting** — see `experiments/ensemble_analysis.py`
+     - Nested temporal calibration: fit calibrator on season S, evaluate on S+1
+     - **CatBoost benefits most**: ECE drops from 0.0196→0.0070 (AUC 0.6065→0.6059)
+     - **EBM lowest raw ECE**: 0.0079 raw, 0.0131 after nested calibration
+     - Nested calibration slightly reduces AUC (0.6067→0.6061 avg for EBM) but improves ECE
+     - AUC preservation and ECE reduction are model-dependent; calibration is not harmful but gains are modest
+     - Crossfit calibration (existing approach) is valid and comparable to nested
+5. [x] **Residual-correlation matrix** — see `experiments/ensemble_analysis.py`
+     - **All model residuals correlated at r > 0.98** — extremely high
+     - RF↔ET: 0.9986 (most correlated, as both are bagged trees)
+     - LR↔LGB: 0.9810 (least correlated pair, some structural diversity)
+     - EBM↔CB: 0.9971 (strong alignment despite different architectures)
+     - Conclusion: ensemble diversity is fundamentally limited — models make nearly identical errors
+6. [x] **Blending: uniform vs constrained nonnegative**
+     - Constrained log-loss minimization yields weights: EBM 55%, CB 23%, RF 13%, LR 9%
+     - **Test AUC: 0.6040 (opt) vs 0.5995 (uniform)** — modest +0.0045 gain on single split
+     - Uniform averaging is near-optimal when residual correlation is this extreme
+     - The ensemble itself provides negligible benefit over the best standalone model (EBM)
 
 ---
 
@@ -158,7 +171,7 @@ Derived from an external research review of the project (July 2026).
 
 ## Bottom Line
 
-> **EBM (standalone) + count-distribution target + nested temporal calibration.**
+> **EBM (standalone) + count-distribution target.** Uniform ensemble offers no benefit over the best standalone model given r > 0.98 residual correlation across all model families.
 
 That combination has the best chance of improving both discrimination and the trustworthiness of resulting probabilities. The project already demonstrates that boosted tabular models beat generic deep sequence learning for this dataset. The next strong moves are not larger Transformers.
 

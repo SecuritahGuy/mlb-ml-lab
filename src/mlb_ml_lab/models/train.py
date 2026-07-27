@@ -13,7 +13,11 @@ import joblib
 import numpy as np
 from catboost import CatBoostClassifier
 from lightgbm import LGBMClassifier
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import (
+    ExtraTreesClassifier,
+    HistGradientBoostingClassifier,
+    RandomForestClassifier,
+)
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
@@ -112,6 +116,14 @@ _BASE_PARAMS: dict[str, dict[str, Any]] = {
         "verbosity": 0,
     },
     "rf": {"n_estimators": 300, "max_depth": 8},
+    "et": {"n_estimators": 300, "max_depth": 8, "min_samples_leaf": 2},
+    "hgb": {
+        "max_iter": 300,
+        "learning_rate": 0.05,
+        "max_depth": 5,
+        "max_bins": 255,
+        "early_stopping": False,
+    },
     "lgb": {
         "n_estimators": 300,
         "learning_rate": 0.05,
@@ -151,6 +163,8 @@ _MODEL_CLASSES: dict[str, Any] = {
     "lr": LogisticRegression,
     "xgb": XGBClassifier,
     "rf": RandomForestClassifier,
+    "et": ExtraTreesClassifier,
+    "hgb": HistGradientBoostingClassifier,
     "lgb": LGBMClassifier,
     "cb": CatBoostClassifier,
 }
@@ -183,6 +197,8 @@ def _build_model(
     kwargs = _BASE_PARAMS.get(model_type, {}).copy()
     if model_type == "cb":
         kwargs["random_seed"] = seed
+    elif model_type == "hgb":
+        kwargs["random_state"] = seed
     else:
         kwargs["random_state"] = seed
         kwargs["n_jobs"] = -1
@@ -348,6 +364,8 @@ MODEL_HELP = {
     "lr": "LogisticRegression",
     "xgb": "XGBoost",
     "rf": "RandomForest",
+    "et": "ExtraTrees",
+    "hgb": "HistGradientBoost",
     "lgb": "LightGBM",
     "cb": "CatBoost",
     "ebm": "EBM",
@@ -396,6 +414,20 @@ DEFAULT_PARAM_GRIDS: dict[str, dict[str, list[Any]]] = {
         "colsample_bylevel": [0.7, 0.8, 1.0],
         "min_data_in_leaf": [1, 3, 5],
         "l2_leaf_reg": [1, 3, 5, 10],
+    },
+    "et": {
+        "n_estimators": [100, 200, 300, 500],
+        "max_depth": [4, 6, 8, 10, None],
+        "min_samples_leaf": [1, 2, 4, 8],
+        "max_features": ["sqrt", "log2", None],
+    },
+    "hgb": {
+        "max_iter": [100, 200, 300, 500],
+        "max_depth": [3, 5, 7, 9],
+        "learning_rate": [0.01, 0.05, 0.1],
+        "max_bins": [128, 255],
+        "min_samples_leaf": [1, 5, 20],
+        "l2_regularization": [0.0, 0.1, 1.0],
     },
     "ebm": {
         "learning_rate": [0.005, 0.01, 0.02],

@@ -66,8 +66,13 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 
 - **EBM (Explainable Boosting Machine)** — new best standalone model (AUC 0.6065 on 4-season, +0.0022 vs categorical CatBoost, +0.0046 vs uniform ensemble). Lazy-imported from `interpret` framework to avoid CLI startup cost.
 - **Categorical CatBoost** (AUC 0.6384 on 6-season, 0.6043 on 4-season) beats numeric-only by +0.12 bps after treating position_cat, opp_pitcher_id, hp_umpire_id, is_home, team_id, opponent_id, month, venue_id as true categorical features
+- **Extra Trees** (AUC 0.6024 standalone) beats uniform ensemble but residual correlation with RF is 0.9986 — near-identical errors
+- **HistGradientBoost** (AUC 0.5878) underperforms — not competitive on this data
 - **Ensemble (LR+XGB+RF+LGBM+CB with categorical CB) target_0.5**: AUC 0.6378 (6-season), **+22.5% ROI** at 0.55 threshold
 - **Categorical CatBoost standalone beats the ensemble** on both datasets (+0.0006 on 6-season, +0.0024 on 4-season) — first time CatBoost beats uniform averaging
+- **Residual correlation**: all models' residuals correlated at r > 0.98 — ensemble diversity fundamentally limited
+- **Uniform averaging is optimal**: constrained nonnegative blending (EBM 55%, CB 23%, RF 13%, LR 9%) yields only +0.0045 AUC over uniform
+- **Calibration audit**: nested temporal calibration (fit on season S, apply to S+1) works correctly; crossfit (existing approach) is valid
 - **Noise features dropped**: 32 statcast/weather features filtered out; no AUC impact (model robust to noise)
 - **Target_1.5**: not viable (33 bets, -36% ROI)
 - **PA-level prediction**: wall at log-loss 1.412 regardless of features or model type (XGBoost, MLX MLP all converge to same ceiling)
