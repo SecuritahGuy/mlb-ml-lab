@@ -673,7 +673,9 @@ def predict_multi_task_model(
     X_seq: np.ndarray,
     X_ctx: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    return tuple(_predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2))  # type: ignore[return-value]
+    return tuple(  # type: ignore[return-value]
+        _predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2)
+    )
 
 
 def save_multi_task_model(
@@ -847,7 +849,9 @@ def predict_dcn_multi_task_model(
     X_seq: np.ndarray,
     X_ctx: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    return tuple(_predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2))  # type: ignore[return-value]
+    return tuple(  # type: ignore[return-value]
+        _predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2)
+    )
 
 
 def save_dcn_model(
@@ -1064,7 +1068,9 @@ def predict_transformer_multi_task_model(
     X_seq: np.ndarray,
     X_ctx: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    return tuple(_predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2))  # type: ignore[return-value]
+    return tuple(  # type: ignore[return-value]
+        _predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2)
+    )
 
 
 def save_transformer_model(

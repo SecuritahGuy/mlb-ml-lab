@@ -146,7 +146,7 @@ class TestTeamFieldingStats:
         client = _make_client()
         try:
             result = client.get_team_fielding_stats([111], 2024)
-            assert result == {}
+            assert not result
         finally:
             client.close()
 
@@ -312,7 +312,7 @@ class TestTeamBullpenStats:
         ]
 
         # 500 is a reliever (0 GS), 501 is a starter (20 GS / 28 GP)
-        def _side_effect(pid, season, group="pitching"):
+        def _side_effect(pid, _season, _group="pitching"):
             if pid == 500:
                 return {
                     "gamesPlayed": 40,
