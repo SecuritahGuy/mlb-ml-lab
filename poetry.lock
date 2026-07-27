@@ -432,6 +432,39 @@ files = [
 ]
 
 [[package]]
+name = "interpret-core"
+version = "0.7.8"
+description = "Fit interpretable models. Explain blackbox machine learning."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "interpret_core-0.7.8-py3-none-any.whl", hash = "sha256:6644f1498b8d247c5004fe691a9815ff0efc74af243f249f295a5e9f3202b483"},
+    {file = "interpret_core-0.7.8.tar.gz", hash = "sha256:39512a4a3971d47c92f50c97f434aa603ab1449aad6d94f09a1d1c072a78dda5"},
+]
+
+[package.dependencies]
+joblib = ">=0.11"
+numpy = ">=1.25"
+pandas = ">=0.24"
+scikit-learn = ">=1.6.0"
+
+[package.extras]
+aplr = ["aplr (>=10.6.1)"]
+dash = ["dash (>=2.0.0)", "dash-cytoscape (>=0.1.1)", "flask (>=1.0.4)", "gevent (>=1.3.6)", "requests (>=2.19.0)"]
+debug = ["psutil (>=5.6.2)"]
+excel = ["Xlsxwriter (>=3.0.1)", "dotsi (>=0.0.3)", "matplotlib (>=3.9.1)", "seaborn (>=0.13.2)"]
+lime = ["lime (>=0.1.1.33)"]
+linear = ["scikit-learn (>=1.6.0)"]
+notebook = ["ipython (>=5.5.0)"]
+plotly = ["plotly (>=3.8.1)"]
+sensitivity = ["SALib (>=1.3.3)"]
+shap = ["ipywidgets (>=7.4.2)", "shap (>=0.28.5)"]
+skoperules = ["skope-rules (>=1.0.1)"]
+testing = ["nbconvert (>=5.4.1)", "nbformat (>=4.4.0)", "pytest (>=4.3.0)", "pytest-cov (>=2.6.1)", "pytest-xdist (>=1.29)", "scipy (>=0.18.1)", "selenium (>=3.141.0)"]
+treeinterpreter = ["treeinterpreter (>=0.2.2)"]
+
+[[package]]
 name = "isort"
 version = "8.0.1"
 description = "A Python utility / library to sort Python imports."
@@ -1877,4 +1910,4 @@ scikit-learn = ["scikit-learn"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12"
-content-hash = "13aa925c69b42f969b989588dfe96b10ed1f73ca9fac4c444726f175804febdf"
+content-hash = "cb931677e67224ffb1c15a6951d8cf64189e2793c11856ca3091df3d3162b0ad"

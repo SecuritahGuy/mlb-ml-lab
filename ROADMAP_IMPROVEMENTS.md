@@ -30,12 +30,14 @@ Derived from an external research review of the project (July 2026).
 
 ## Sprint 1: Low-Cost, High-Information Diversity
 
-1. [ ] **Add Explainable Boosting Machine** (`interpret` framework)
-     - Main effects only → 5, 10, 20 interactions
-     - Monotonic constraints on clearly directional features
-     - Bagged EBM seed ensemble
-     - Optimize for log loss, Brier, AUC, calibration slope
-     - *Effort: Low. Upside: Medium-High. Interpretability: Very high.*
+1. [x] **Add Explainable Boosting Machine** (`interpret` framework)
+     - Main effects only (interactions=0, outer_bags=14, max_bins=256)
+     - Lazy-imported to avoid CLI startup cost (~0.7s)
+     - **AUC 0.6065** on 4-season dataset — new best standalone model:
+       - +0.0022 over categorical CatBoost (0.6043)
+       - +0.0046 over uniform ensemble (0.6019)
+     - Adding EBM to the uniform ensemble produces AUC 0.6036 (slightly worse than EBM alone) — uniform averaging is still optimal
+     - **Next**: test with interactions (5, 10, 20) + monotonic constraints
 2. [ ] **Add Extra Trees** (sklearn) — cheap ensemble diversity
      - 500–1500 trees, `min_samples_leaf` 5–100, `max_features` 0.3–1.0
      - Check out-of-fold residual correlation with XGBoost/LGBM
@@ -156,7 +158,7 @@ Derived from an external research review of the project (July 2026).
 
 ## Bottom Line
 
-> **Categorical CatBoost + EBM + a unified count-distribution target, evaluated with nested temporal calibration.**
+> **EBM (standalone) + count-distribution target + nested temporal calibration.**
 
 That combination has the best chance of improving both discrimination and the trustworthiness of resulting probabilities. The project already demonstrates that boosted tabular models beat generic deep sequence learning for this dataset. The next strong moves are not larger Transformers.
 

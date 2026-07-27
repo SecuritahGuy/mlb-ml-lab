@@ -31,6 +31,7 @@ meteostat = "^1.6"
 pyarrow = "^25.0.0"
 openai = "^2.48.0"
 catboost = "^1.2.10"
+interpret-core = ">=0.7.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8"

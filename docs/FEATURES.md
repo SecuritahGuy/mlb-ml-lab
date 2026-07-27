@@ -5,7 +5,7 @@ All features produced by registered `FeatureExtractor`s in
 `(player_id, game_pk, date)` — each extractor adds its columns to
 the same row.
 
-28 extractors produce ~138 feature columns.
+29 extractors produce ~142 feature columns.
 
 ---
 

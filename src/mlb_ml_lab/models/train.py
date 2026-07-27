@@ -138,6 +138,13 @@ _BASE_PARAMS: dict[str, dict[str, Any]] = {
         "early_stop_patience": 10,
         "l2_reg": 1e-5,
     },
+    "ebm": {
+        "interactions": 0,
+        "outer_bags": 14,
+        "inner_bags": 0,
+        "learning_rate": 0.01,
+        "max_bins": 256,
+    },
 }
 
 _MODEL_CLASSES: dict[str, Any] = {
@@ -159,6 +166,16 @@ def _build_model(
         if params:
             kwargs.update(params)
         return MlxNNClassifier(seed=seed, **kwargs)
+
+    if model_type == "ebm":
+        from interpret.glassbox import ExplainableBoostingClassifier  # lazy import
+
+        kwargs = dict(_BASE_PARAMS.get("ebm", {}))
+        kwargs["random_state"] = seed
+        kwargs["n_jobs"] = -1
+        if params:
+            kwargs.update(params)
+        return ExplainableBoostingClassifier(**kwargs)
 
     model_cls = _MODEL_CLASSES.get(model_type)
     if model_cls is None:
@@ -333,6 +350,7 @@ MODEL_HELP = {
     "rf": "RandomForest",
     "lgb": "LightGBM",
     "cb": "CatBoost",
+    "ebm": "EBM",
     "mlx": "MLX-MLP",
 }
 
@@ -378,6 +396,12 @@ DEFAULT_PARAM_GRIDS: dict[str, dict[str, list[Any]]] = {
         "colsample_bylevel": [0.7, 0.8, 1.0],
         "min_data_in_leaf": [1, 3, 5],
         "l2_leaf_reg": [1, 3, 5, 10],
+    },
+    "ebm": {
+        "learning_rate": [0.005, 0.01, 0.02],
+        "max_bins": [128, 256, 512],
+        "outer_bags": [8, 14, 20],
+        "interactions": [0, 5, 10],
     },
 }
 

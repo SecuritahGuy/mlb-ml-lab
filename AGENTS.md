@@ -64,6 +64,7 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 
 ## Key Results
 
+- **EBM (Explainable Boosting Machine)** — new best standalone model (AUC 0.6065 on 4-season, +0.0022 vs categorical CatBoost, +0.0046 vs uniform ensemble). Lazy-imported from `interpret` framework to avoid CLI startup cost.
 - **Categorical CatBoost** (AUC 0.6384 on 6-season, 0.6043 on 4-season) beats numeric-only by +0.12 bps after treating position_cat, opp_pitcher_id, hp_umpire_id, is_home, team_id, opponent_id, month, venue_id as true categorical features
 - **Ensemble (LR+XGB+RF+LGBM+CB with categorical CB) target_0.5**: AUC 0.6378 (6-season), **+22.5% ROI** at 0.55 threshold
 - **Categorical CatBoost standalone beats the ensemble** on both datasets (+0.0006 on 6-season, +0.0024 on 4-season) — first time CatBoost beats uniform averaging
