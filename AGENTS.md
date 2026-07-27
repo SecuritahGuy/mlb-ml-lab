@@ -64,9 +64,9 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 
 ## Key Results
 
-- **Categorical CatBoost** (AUC 0.6384) beats numeric-only (0.6372) by +0.12 bps after treating position_cat, opp_pitcher_id, hp_umpire_id, is_home, etc. as true categorical features
-- **Ensemble (LR+XGB+RF+LGBM+CB with categorical CB) target_0.5**: AUC 0.6378, **+22.5% ROI** at 0.55 threshold, **+37%** at 0.70 (305K→45K bets)
-- **Categorical CatBoost standalone**: AUC 0.6384 — first time CatBoost beats the ensemble in standalone AUC
+- **Categorical CatBoost** (AUC 0.6384 on 6-season, 0.6043 on 4-season) beats numeric-only by +0.12 bps after treating position_cat, opp_pitcher_id, hp_umpire_id, is_home, team_id, opponent_id, month, venue_id as true categorical features
+- **Ensemble (LR+XGB+RF+LGBM+CB with categorical CB) target_0.5**: AUC 0.6378 (6-season), **+22.5% ROI** at 0.55 threshold
+- **Categorical CatBoost standalone beats the ensemble** on both datasets (+0.0006 on 6-season, +0.0024 on 4-season) — first time CatBoost beats uniform averaging
 - **Noise features dropped**: 32 statcast/weather features filtered out; no AUC impact (model robust to noise)
 - **Target_1.5**: not viable (33 bets, -36% ROI)
 - **PA-level prediction**: wall at log-loss 1.412 regardless of features or model type (XGBoost, MLX MLP all converge to same ceiling)
@@ -83,6 +83,7 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 | `src/mlb_ml_lab/evaluation/backtest.py` | `walk_forward_predict()`, `simulate_bets()`, `GamePrediction`, `BetResult` |
 | `src/mlb_ml_lab/models/train.py` | `load_ensemble()`, `_build_model()`, `WalkForwardSplit`, `_build_catboost_matrix()`, `CATEGORICAL_FEATURES` |
 | `src/mlb_ml_lab/features/identity.py` | `IdentityFeatures` — team_id, opponent_id, month, position_code for categorical CatBoost |
+| `src/mlb_ml_lab/evaluation/backtest.py` | `walk_forward_predict()`, `simulate_bets()`, `GamePrediction`, `BetResult` |
 | `src/mlb_ml_lab/models/mlx_nn.py` | `MlxNNClassifier` — sklearn-compatible MLP on GPU |
 | `src/mlb_ml_lab/models/sequence.py` | GRU, Hybrid, MultiTask, DCN, Transformer models (all MLX) |
 | `src/mlb_ml_lab/cli/main.py` | CLI entry point (`backtest`, `bet`, `predict`, `train`) |

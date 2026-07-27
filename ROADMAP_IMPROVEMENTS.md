@@ -69,11 +69,12 @@ Derived from an external research review of the project (July 2026).
      - Missing categorical values encoded as -1 (CatBoost-native missing handling)
      - Integrated into `walk_forward_predict()`, `train_baselines()`, `tune_hyperparameters()`, `train_final()`
      - Non-CatBoost models unaffected (continue with numeric-only matrix)
-10. [x] **Backtest results** (on cached dataset without new identity features):
-     - **Categorical CatBoost standalone: AUC 0.6384** (+0.0012 vs numeric-only 0.6372)
-     - **Ensemble (LR+XGB+RF+LGBM+CB with categorical CB): AUC 0.6378** (essentially unchanged)
-     - The gain is from treating existing features (position_cat, opp_pitcher_id, etc.) as categorical
-     - Larger lift expected after rebuilding dataset with `team_id`, `opponent_id`, `month`, `venue_id`
+10. [x] **Backtest results**:
+     - **Categorical CatBoost standalone: AUC 0.6384** (6-season), **0.6043** (4-season)
+     - **+0.0012 vs numeric-only CatBoost** (existing features alone)
+     - **+0.0024 vs uniform ensemble** on 4-season dataset with identity features
+     - **First time CatBoost standalone beats the ensemble** — on both datasets
+     - Dataset rebuilt with identity features: `team_id`, `opponent_id`, `month`, `venue_id`, `position_code`
 11. [ ] **Evaluate cold-start cohorts independently**:
      - Established players (≥200 prior games)
      - Players with <50 prior games
