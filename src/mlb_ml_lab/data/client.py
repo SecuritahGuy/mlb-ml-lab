@@ -1072,6 +1072,79 @@ class MlbClient:
     # Divisions, Leagues, Seasons (metadata)
     # ------------------------------------------------------------------
 
+    def get_sports_players(self, season: int, sport_id: int = 1) -> list[dict[str, Any]]:
+        """Fetch all active players in a sport for a season.
+
+        Args:
+            season: Season year.
+            sport_id: Sport ID (1 = MLB).
+
+        Returns:
+            List of player dicts, each with ``id``, ``fullName``,
+            ``primaryPosition``, ``currentTeam``, etc.
+        """
+        data = self._get(f"/sports/{sport_id}/players", params={"season": season})
+        return data.get("people", [])
+
+    def get_player_game_stats(
+        self, player_id: int, game_pk: int, group: str = "hitting"
+    ) -> dict[str, Any]:
+        """Fetch a single player's stats for a specific game.
+
+        Args:
+            player_id: MLBAM person ID.
+            game_pk: Game primary key.
+            group: ``"hitting"`` or ``"pitching"``.
+
+        Returns:
+            Dict of stat keys (avg, homeRuns, hits, etc.) or empty dict
+            if the player didn't appear in this game.
+        """
+        data = self._get(
+            f"/people/{player_id}/stats/game/{game_pk}",
+            params={"group": group},
+        )
+        stats = data.get("stats", [])
+        if not stats:
+            return {}
+        splits = stats[0].get("splits", [])
+        return splits[0].get("stat", {}) if splits else {}
+
+    def get_stat_splits(
+        self,
+        season: int,
+        group: str = "hitting",
+        sit_codes: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Fetch league-wide stat splits filtered by situation codes.
+
+        Args:
+            season: Season year.
+            group: ``"hitting"``, ``"pitching"``, or ``"fielding"``.
+            sit_codes: Comma-separated situation codes for context-specific
+                       splits (e.g. ``"h"`` for home, ``"r"`` for away,
+                       ``"vL"`` for vs LHP, ``"vR"`` for vs RHP).
+            limit: Max results (default 1000).
+
+        Returns:
+            List of split dicts, each with ``player``, ``team``, ``stat``,
+            and ``situation`` context.
+        """
+        params: dict[str, Any] = {
+            "stats": "statSplits",
+            "group": group,
+            "season": season,
+            "limit": limit,
+        }
+        if sit_codes:
+            params["sitCodes"] = sit_codes
+        data = self._get("/stats", params=params)
+        stats = data.get("stats", [])
+        if not stats:
+            return []
+        return stats[0].get("splits", [])
+
     def get_divisions(self, sport_id: int = 1) -> list[dict[str, Any]]:
         """Fetch all divisions for a sport."""
         data = self._get("/divisions", params={"sportId": sport_id})

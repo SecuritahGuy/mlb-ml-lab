@@ -312,7 +312,7 @@ class TestTeamBullpenStats:
         ]
 
         # 500 is a reliever (0 GS), 501 is a starter (20 GS / 28 GP)
-        def _side_effect(pid, _season, _group="pitching"):
+        def _side_effect(pid, *_args, **_kwargs):
             if pid == 500:
                 return {
                     "gamesPlayed": 40,
@@ -566,5 +566,143 @@ class TestGameLinescore:
         try:
             ls = client.get_game_linescore(100)
             assert ls["currentInning"] == 5
+        finally:
+            client.close()
+
+
+class TestSportsPlayers:
+    @patch.object(MlbClient, "_get")
+    def test_returns_player_list(self, mock_get):
+        mock_get.return_value = {
+            "people": [
+                {"id": 1, "fullName": "John Doe", "primaryPosition": {"abbreviation": "SS"}},
+                {"id": 2, "fullName": "Jane Roe", "primaryPosition": {"abbreviation": "1B"}},
+            ]
+        }
+        client = _make_client()
+        try:
+            players = client.get_sports_players(2024)
+            assert len(players) == 2
+            assert players[0]["fullName"] == "John Doe"
+            assert players[1]["primaryPosition"]["abbreviation"] == "1B"
+        finally:
+            client.close()
+
+    @patch.object(MlbClient, "_get")
+    def test_empty_people(self, mock_get):
+        mock_get.return_value = {}
+        client = _make_client()
+        try:
+            players = client.get_sports_players(2024)
+            assert players == []
+        finally:
+            client.close()
+
+
+class TestPlayerGameStats:
+    @patch.object(MlbClient, "_get")
+    def test_returns_game_stats(self, mock_get):
+        mock_get.return_value = {
+            "stats": [
+                {
+                    "splits": [
+                        {
+                            "stat": {
+                                "hits": 2,
+                                "atBats": 4,
+                                "homeRuns": 1,
+                                "avg": ".500",
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+        client = _make_client()
+        try:
+            stats = client.get_player_game_stats(100, 200)
+            assert stats["hits"] == 2
+            assert stats["homeRuns"] == 1
+            assert stats["avg"] == ".500"
+        finally:
+            client.close()
+
+    @patch.object(MlbClient, "_get")
+    def test_empty_stats_returns_empty_dict(self, mock_get):
+        mock_get.return_value = {"stats": []}
+        client = _make_client()
+        try:
+            stats = client.get_player_game_stats(100, 200)
+            assert stats == {}
+        finally:
+            client.close()
+
+    @patch.object(MlbClient, "_get")
+    def test_empty_splits_returns_empty_dict(self, mock_get):
+        mock_get.return_value = {"stats": [{"splits": []}]}
+        client = _make_client()
+        try:
+            stats = client.get_player_game_stats(100, 200)
+            assert stats == {}
+        finally:
+            client.close()
+
+
+class TestStatSplits:
+    @patch.object(MlbClient, "_get")
+    def test_returns_splits(self, mock_get):
+        mock_get.return_value = {
+            "stats": [
+                {
+                    "splits": [
+                        {
+                            "player": {"id": 100, "fullName": "Player A"},
+                            "stat": {"avg": ".300", "homeRuns": 10},
+                            "situation": {"description": "vs RHP"},
+                        },
+                        {
+                            "player": {"id": 200, "fullName": "Player B"},
+                            "stat": {"avg": ".250", "homeRuns": 5},
+                            "situation": {"description": "vs RHP"},
+                        },
+                    ]
+                }
+            ]
+        }
+        client = _make_client()
+        try:
+            splits = client.get_stat_splits(2024, sit_codes="vR")
+            assert len(splits) == 2
+            assert splits[0]["player"]["fullName"] == "Player A"
+            assert splits[0]["stat"]["avg"] == ".300"
+            assert splits[0]["situation"]["description"] == "vs RHP"
+        finally:
+            client.close()
+
+    @patch.object(MlbClient, "_get")
+    def test_no_sit_codes_still_works(self, mock_get):
+        mock_get.return_value = {
+            "stats": [
+                {
+                    "splits": [
+                        {"player": {"id": 100}, "stat": {"avg": ".280"}}
+                    ]
+                }
+            ]
+        }
+        client = _make_client()
+        try:
+            splits = client.get_stat_splits(2024)
+            assert len(splits) == 1
+        finally:
+            client.close()
+
+    @patch.object(MlbClient, "_get")
+    def test_empty_stats_returns_empty_list(self, mock_get):
+        mock_get.return_value = {"stats": []}
+        client = _make_client()
+        try:
+            splits = client.get_stat_splits(2024)
+            assert splits == []
         finally:
             client.close()
