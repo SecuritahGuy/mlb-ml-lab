@@ -85,9 +85,20 @@ class TestParkFactorFeatures:
         log = _log()
         rows = ParkFactorFeatures().extract(game_logs=[log])
         r = rows[0]
+        assert "venue_id" in r
         assert "park_wOBA" in r
         assert "park_HR" in r
         assert "park_1B" in r
+
+    def test_venue_id_present_with_teams(self):
+        teams = [{"id": 108, "venue": {"id": 555}}]
+        log = _log(is_home=True)
+        rows = ParkFactorFeatures().extract(game_logs=[log], teams=teams)
+        assert rows[0]["venue_id"] == 555
+
+    def test_venue_id_none_without_teams(self):
+        rows = ParkFactorFeatures().extract(game_logs=[_log()])
+        assert rows[0]["venue_id"] is None
 
     def test_no_teams_defaults_to_neutral(self):
         log = _log()

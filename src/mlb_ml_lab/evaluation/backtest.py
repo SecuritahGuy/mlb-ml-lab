@@ -18,6 +18,7 @@ from sklearn.model_selection import KFold
 from mlb_ml_lab.models.train import (
     WalkForwardSplit,
     _build_model,
+    _build_catboost_matrix,
     _feature_columns,
     _merge_features_targets,
     NOISE_FEATURES,
@@ -110,10 +111,14 @@ def walk_forward_predict(
         x_all = imputer.fit_transform(x_all)
     x_all = np.nan_to_num(x_all, nan=0.0)
 
+    model_types = [model_type] if isinstance(model_type, str) else model_type
+    has_cb = "cb" in model_types
+    x_cb, cb_cat_indices = (
+        _build_catboost_matrix(merged, feat_cols, x_all) if has_cb else (None, None)
+    )
+
     splitter = WalkForwardSplit(n_splits=n_splits)
     folds = splitter.split(dates)
-
-    model_types = [model_type] if isinstance(model_type, str) else model_type
 
     predictions: list[GamePrediction] = []
     for train_idx, test_idx in folds:
@@ -121,11 +126,20 @@ def walk_forward_predict(
         all_probas = np.zeros((n_test, len(model_types)), dtype=np.float64)
 
         for i, mt in enumerate(model_types):
+            x_tr = (
+                x_cb[train_idx] if mt == "cb" and x_cb is not None else x_all[train_idx]
+            )
+            x_te = (
+                x_cb[test_idx] if mt == "cb" and x_cb is not None else x_all[test_idx]
+            )
             model = _build_model(mt, seed, params=params)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", category=UserWarning)
-                model.fit(x_all[train_idx], y_all[train_idx])
-            all_probas[:, i] = model.predict_proba(x_all[test_idx])[:, 1]
+                if mt == "cb" and cb_cat_indices is not None:
+                    model.fit(x_tr, y_all[train_idx], cat_features=cb_cat_indices)
+                else:
+                    model.fit(x_tr, y_all[train_idx])
+            all_probas[:, i] = model.predict_proba(x_te)[:, 1]
 
         ensemble_proba = np.mean(all_probas, axis=1)
 

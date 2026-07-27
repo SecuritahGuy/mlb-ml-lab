@@ -187,6 +187,23 @@ _ALWAYS_EXCLUDE: set[str] = {
     "target_1.5",
 }
 
+CATEGORICAL_FEATURES: set[str] = {
+    "team_id",
+    "opponent_id",
+    "month",
+    "venue_id",
+    "position_cat",
+    "is_home",
+    "il_flag",
+    "same_hand_advantage",
+    "bats_right",
+    "bats_left",
+    "throws_right",
+    "throws_left",
+    "opp_pitcher_id",
+    "hp_umpire_id",
+}
+
 NOISE_FEATURES: set[str] = {
     "ba",
     "slg",
@@ -256,6 +273,58 @@ def _feature_columns(
             continue
         cols.append(col)
     return cols
+
+
+def _categorical_data(
+    rows: list[dict[str, Any]],
+    cat_cols: set[str] | None = None,
+) -> tuple[np.ndarray, list[str]]:
+    """Extract categorical feature columns from merged rows for CatBoost.
+
+    Returns ``(x_cat, cat_names)`` where *x_cat* is an ``int32`` array
+    and *cat_names* is the list of column names in order.  Missing values
+    are encoded as -1 (CatBoost treats negative values as missing).
+    """
+    if cat_cols is None:
+        cat_cols = CATEGORICAL_FEATURES
+    available = sorted(c for c in cat_cols if c in rows[0])
+    x_cat = np.empty((len(rows), len(available)), dtype=np.int32)
+    for j, col in enumerate(available):
+        for i, row in enumerate(rows):
+            val = row.get(col)
+            x_cat[i, j] = -1 if val is None else int(val)
+    return x_cat, available
+
+
+def _build_catboost_matrix(
+    merged: list[dict[str, Any]],
+    numeric_cols: list[str],
+    x_all: np.ndarray,
+) -> tuple[np.ndarray, list[int]]:
+    """Build a combined numeric+categorical matrix for CatBoost.
+
+    Removes columns in ``CATEGORICAL_FEATURES`` from the pre-built
+    *x_all*, extracts their raw values as ``int32`` categorical codes,
+    and returns the combined matrix with categorical feature indices.
+    """
+    cat_present = sorted(c for c in CATEGORICAL_FEATURES if c in merged[0])
+    cat_in_num = [numeric_cols.index(c) for c in cat_present if c in numeric_cols]
+    x_num = np.delete(x_all, cat_in_num, axis=1) if cat_in_num else x_all
+
+    x_cat = np.empty((len(merged), len(cat_present)), dtype=np.int32)
+    for j, col in enumerate(cat_present):
+        for i, row in enumerate(merged):
+            val = row.get(col)
+            x_cat[i, j] = -1 if val is None else int(val)
+
+    n_num = x_num.shape[1]
+    n_cat = x_cat.shape[1]
+    # Use object array so numeric stays float64 and categorical stays int32
+    x_combined = np.empty((x_num.shape[0], n_num + n_cat), dtype=object)
+    x_combined[:, :n_num] = x_num
+    x_combined[:, n_num:] = x_cat
+    cat_indices = list(range(n_num, n_num + n_cat))
+    return x_combined, cat_indices
 
 
 MODEL_HELP = {
@@ -376,6 +445,16 @@ def tune_hyperparameters(
         x_all = imputer.fit_transform(x_all)
     x_all = np.nan_to_num(x_all, nan=0.0)
 
+    # Build categorical data for CatBoost tuning
+    is_cb = model_type == "cb"
+    if is_cb:
+        x_all_cb, cb_cat_indices = _build_catboost_matrix(merged, feat_cols, x_all)
+        x_train_data = x_all_cb
+        cat_features_arg = cb_cat_indices
+    else:
+        x_train_data = x_all
+        cat_features_arg = None
+
     splitter = WalkForwardSplit(n_splits=n_splits)
     folds = splitter.split(dates)
     if not folds:
@@ -405,15 +484,18 @@ def tune_hyperparameters(
 
         fold_metrics: list[dict[str, float]] = []
         for fold_idx, (train_idx, test_idx) in enumerate(folds):
+            xt = x_train_data[train_idx]
+            xte = x_train_data[test_idx]
             metrics = _run_fold(
                 model_type,
-                x_all[train_idx],
+                xt,
                 y_all[train_idx],
-                x_all[test_idx],
+                xte,
                 y_all[test_idx],
                 fold_idx,
                 seed,
                 params=combo,
+                cat_features=cat_features_arg,
             )
             fold_metrics.append(metrics)
 
@@ -462,9 +544,13 @@ def _run_fold(
     fold_idx: int,
     seed: int,
     params: dict[str, Any] | None = None,
+    cat_features: list[int] | None = None,
 ) -> dict[str, float]:
     model = _build_model(model_type, seed, params=params)
-    model.fit(x_train, y_train)
+    if cat_features and model_type == "cb":
+        model.fit(x_train, y_train, cat_features=cat_features)
+    else:
+        model.fit(x_train, y_train)
     y_pred = model.predict(x_test)
     y_proba = model.predict_proba(x_test)[:, 1]
     metrics = classification_metrics(
@@ -487,13 +573,17 @@ def _run_ensemble_fold(
     y_test: np.ndarray,
     fold_idx: int,
     seed: int,
+    cat_features: list[int] | None = None,
 ) -> dict[str, float]:
     probas: list[np.ndarray] = []
     for mt in eval_models:
         model = _build_model(mt, seed)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=UserWarning)
-            model.fit(x_train, y_train)
+            if cat_features and mt == "cb":
+                model.fit(x_train, y_train, cat_features=cat_features)
+            else:
+                model.fit(x_train, y_train)
             probas.append(model.predict_proba(x_test)[:, 1])
     avg_proba = np.mean(probas, axis=0)
     avg_pred = (avg_proba > 0.5).astype(np.int32)
@@ -538,6 +628,12 @@ def train_baselines(
         x_all = imputer.fit_transform(x_all)
     x_all = np.nan_to_num(x_all, nan=0.0)
 
+    # Build categorical data for CatBoost
+    has_cb = "cb" in model_types
+    x_cb, cb_cat_indices = (
+        _build_catboost_matrix(merged, feat_cols, x_all) if has_cb else (None, None)
+    )
+
     splitter = WalkForwardSplit(n_splits=n_splits)
     folds = splitter.split(dates)
 
@@ -555,17 +651,30 @@ def train_baselines(
         if model_type == "ensemble":
             continue
         model_type = model_type.strip().lower()
+        has_cat = model_type == "cb" and x_cb is not None
         fold_metrics: list[dict[str, float]] = []
         for fold_idx, (train_idx, test_idx) in enumerate(folds):
-            metrics = _run_fold(
-                model_type,
-                x_all[train_idx],
-                y_all[train_idx],
-                x_all[test_idx],
-                y_all[test_idx],
-                fold_idx,
-                seed,
-            )
+            if has_cat:
+                metrics = _run_fold(
+                    model_type,
+                    x_cb[train_idx],
+                    y_all[train_idx],
+                    x_cb[test_idx],
+                    y_all[test_idx],
+                    fold_idx,
+                    seed,
+                    cat_features=cb_cat_indices,
+                )
+            else:
+                metrics = _run_fold(
+                    model_type,
+                    x_all[train_idx],
+                    y_all[train_idx],
+                    x_all[test_idx],
+                    y_all[test_idx],
+                    fold_idx,
+                    seed,
+                )
             fold_metrics.append(metrics)
 
         avg_acc = float(np.mean([m["accuracy"] for m in fold_metrics]))
@@ -591,12 +700,13 @@ def train_baselines(
         ensemble_metrics = [
             _run_ensemble_fold(
                 eval_models,
-                x_all[train_idx],
+                x_cb[train_idx] if x_cb is not None else x_all[train_idx],
                 y_all[train_idx],
-                x_all[test_idx],
+                x_cb[test_idx] if x_cb is not None else x_all[test_idx],
                 y_all[test_idx],
                 fold_idx,
                 seed,
+                cat_features=cb_cat_indices if x_cb is not None else None,
             )
             for fold_idx, (train_idx, test_idx) in enumerate(folds)
         ]
@@ -788,7 +898,11 @@ def train_final(
     model = _build_model(model_type, seed, params=params)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=UserWarning)
-        model.fit(x, y)
+        if model_type == "cb":
+            x_cb, cat_indices = _build_catboost_matrix(merged, feat_cols, x)
+            model.fit(x_cb, y, cat_features=cat_indices)
+        else:
+            model.fit(x, y)
 
     return {
         "model": model,

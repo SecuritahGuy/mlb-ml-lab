@@ -27,6 +27,11 @@ class ParkFactorFeatures(FeatureExtractor):
     def features(self) -> list[FeatureMeta]:
         return [
             FeatureMeta(
+                name="venue_id",
+                description="MLBAM venue ID for the game's park",
+                source="context",
+            ),
+            FeatureMeta(
                 name="park_wOBA",
                 description="Park factor for wOBA (ratio, 1.0 = neutral)",
                 source="context",
@@ -52,12 +57,15 @@ class ParkFactorFeatures(FeatureExtractor):
 
         rows: list[dict[str, Any]] = []
         for log in game_logs:
+            home_team_id = log.team_id if log.is_home else log.opponent_id
+            venue_id = venue_map.get(home_team_id)
             factors = self._factors_for_game(log, venue_map, season)
             rows.append(
                 {
                     "player_id": log.player_id,
                     "game_pk": log.game_pk,
                     "date": log.date,
+                    "venue_id": venue_id,
                     "park_wOBA": factors.get("wOBA", 1.0),
                     "park_HR": factors.get("HR", 1.0),
                     "park_1B": factors.get("1B", 1.0),

@@ -14,6 +14,7 @@ import mlb_ml_lab.features.schedule  # noqa: F401
 import mlb_ml_lab.features.statcast  # noqa: F401
 import mlb_ml_lab.features.streaks  # noqa: F401
 import mlb_ml_lab.features.gamepace  # noqa: F401
+import mlb_ml_lab.features.identity  # noqa: F401
 import mlb_ml_lab.features.teamleaders  # noqa: F401
 import mlb_ml_lab.features.odds_features  # noqa: F401
 import mlb_ml_lab.features.team_trends  # noqa: F401

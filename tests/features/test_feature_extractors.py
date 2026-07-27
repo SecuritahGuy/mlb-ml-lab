@@ -283,3 +283,33 @@ class TestUmpireFeatures:
     def test_extract_no_game_counts(self):
         rows = _extract("UmpireFeatures", game_contexts={100: {"hp_umpire_id": 123}})
         assert rows[0]["hp_umpire_id"] == 123 and rows[0]["umpire_game_count"] is None
+
+
+class TestIdentityFeatures:
+    def test_metadata(self):
+        names = {m.name for m in _reg["IdentityFeatures"]().features}
+        assert "team_id" in names and "month" in names and "position_code" in names
+
+    def test_extract(self):
+        rows = _extract("IdentityFeatures")
+        assert rows[0]["team_id"] == 111
+        assert rows[0]["opponent_id"] == 222
+        assert rows[0]["month"] == 4
+        assert rows[0]["position_code"] == "CF"
+
+    def test_month_parsing(self):
+        rows = _reg["IdentityFeatures"]().extract(game_logs=[_log(date="2024-10-15")])
+        assert rows[0]["month"] == 10
+
+
+class TestParkFactorFeaturesVenueId:
+    def test_venue_id_present(self):
+        rows = _extract(
+            "ParkFactorFeatures",
+            teams=[{"id": 111, "venue": {"id": 555}}],
+        )
+        assert rows[0]["venue_id"] is not None
+
+    def test_venue_id_none_without_teams(self):
+        rows = _extract("ParkFactorFeatures")
+        assert rows[0]["venue_id"] is None

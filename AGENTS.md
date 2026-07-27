@@ -64,8 +64,9 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 
 ## Key Results
 
-- **CatBoost** (AUC 0.6313) beats XGB (0.600) by +3.2 bps and LGBM (0.623) by +0.8 bps in standalone walk-forward backtest. Best single model.
-- **Ensemble (LR+XGB+RF+LGBM) target_0.5**: AUC 0.636, **+22.5% ROI** at 0.55 threshold, **+37%** at 0.70 (306K→45K bets)
+- **Categorical CatBoost** (AUC 0.6384) beats numeric-only (0.6372) by +0.12 bps after treating position_cat, opp_pitcher_id, hp_umpire_id, is_home, etc. as true categorical features
+- **Ensemble (LR+XGB+RF+LGBM+CB with categorical CB) target_0.5**: AUC 0.6378, **+22.5% ROI** at 0.55 threshold, **+37%** at 0.70 (305K→45K bets)
+- **Categorical CatBoost standalone**: AUC 0.6384 — first time CatBoost beats the ensemble in standalone AUC
 - **Noise features dropped**: 32 statcast/weather features filtered out; no AUC impact (model robust to noise)
 - **Target_1.5**: not viable (33 bets, -36% ROI)
 - **PA-level prediction**: wall at log-loss 1.412 regardless of features or model type (XGBoost, MLX MLP all converge to same ceiling)
@@ -80,7 +81,8 @@ Experimental models predicting whether MLB player hits clear 0.5 and 1.5 thresho
 | File | Purpose |
 |------|---------|
 | `src/mlb_ml_lab/evaluation/backtest.py` | `walk_forward_predict()`, `simulate_bets()`, `GamePrediction`, `BetResult` |
-| `src/mlb_ml_lab/models/train.py` | `load_ensemble()`, `_build_model()`, `WalkForwardSplit` |
+| `src/mlb_ml_lab/models/train.py` | `load_ensemble()`, `_build_model()`, `WalkForwardSplit`, `_build_catboost_matrix()`, `CATEGORICAL_FEATURES` |
+| `src/mlb_ml_lab/features/identity.py` | `IdentityFeatures` — team_id, opponent_id, month, position_code for categorical CatBoost |
 | `src/mlb_ml_lab/models/mlx_nn.py` | `MlxNNClassifier` — sklearn-compatible MLP on GPU |
 | `src/mlb_ml_lab/models/sequence.py` | GRU, Hybrid, MultiTask, DCN, Transformer models (all MLX) |
 | `src/mlb_ml_lab/cli/main.py` | CLI entry point (`backtest`, `bet`, `predict`, `train`) |

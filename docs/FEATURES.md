@@ -5,7 +5,7 @@ All features produced by registered `FeatureExtractor`s in
 `(player_id, game_pk, date)` — each extractor adds its columns to
 the same row.
 
-27 extractors produce ~132 feature columns.
+28 extractors produce ~138 feature columns.
 
 ---
 
@@ -121,6 +121,7 @@ Ballpark adjustment ratios from Baseball Savant.
 
 | Column | Type | Description |
 |--------|------|-------------|
+| `venue_id` | int | MLBAM venue ID for the game's park |
 | `park_wOBA` | float | Park factor for wOBA (1.0 = neutral) |
 | `park_HR` | float | Park factor for HR |
 | `park_1B` | float | Park factor for singles |
@@ -437,7 +438,23 @@ outcomes.
 
 ---
 
-## 28. WeatherForecastFeatures (`forecast`)
+## 28. IdentityFeatures (`identity`)
+
+Direct passthrough fields from game logs, primarily useful as categorical
+inputs for models like CatBoost.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `team_id` | int | Batter's team MLBAM ID |
+| `opponent_id` | int | Opposing team MLBAM ID |
+| `month` | int (1-12) | Game month |
+| `position_code` | str | Position abbreviation (CF, SS, DH, etc.) |
+
+**Source**: Game log
+
+---
+
+## 29. WeatherForecastFeatures (`forecast`)
 
 Forecast weather from National Weather Service API.
 
