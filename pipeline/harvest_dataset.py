@@ -700,6 +700,7 @@ def main() -> None:
         all_injury_txns.extend(txn)
         print(f"  {s}: {len(txn)} transactions")
     from mlb_ml_lab.features.injuries import build_player_timelines
+
     player_timelines = build_player_timelines(all_injury_txns)
     injury_data = {"player_timelines": player_timelines}
     print(f"  → {len(player_timelines)} players with IL history")

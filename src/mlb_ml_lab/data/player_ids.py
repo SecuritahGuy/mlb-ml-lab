@@ -37,9 +37,18 @@ ID_SOURCES = [
 ]
 
 CHADWICK_COLS = [
-    "name_last", "name_first", "key_mlbam", "key_retro", "key_bbref",
-    "key_fangraphs", "key_bbref_minors", "key_cbs", "key_espn",
-    "key_nfbc", "key_war_daily", "key_bpro",
+    "name_last",
+    "name_first",
+    "key_mlbam",
+    "key_retro",
+    "key_bbref",
+    "key_fangraphs",
+    "key_bbref_minors",
+    "key_cbs",
+    "key_espn",
+    "key_nfbc",
+    "key_war_daily",
+    "key_bpro",
 ]
 
 
@@ -65,7 +74,9 @@ class PlayerIdResolver:
     """
 
     def __init__(
-        self, cache_dir: str = DEFAULT_CACHE_DIR, auto_sync: bool = False,
+        self,
+        cache_dir: str = DEFAULT_CACHE_DIR,
+        auto_sync: bool = False,
     ) -> None:
         self._cache_dir = cache_dir
         self._by_mlbam: dict[int, dict[str, Any]] = {}
@@ -128,7 +139,9 @@ class PlayerIdResolver:
         results: list[dict[str, Any]] = []
         name_lower = name.lower() if name else ""
         for record in self._by_mlbam.values():
-            full = f"{record.get('name_first', '')} {record.get('name_last', '')}".lower()
+            full = (
+                f"{record.get('name_first', '')} {record.get('name_last', '')}".lower()
+            )
             if name_lower and name_lower not in full:
                 continue
             results.append(dict(record))
@@ -174,6 +187,7 @@ class PlayerIdResolver:
 
     def _download_register(self, path: str) -> None:
         import httpx
+
         total = 0
         with open(path, "w", encoding="utf-8") as out:
             for i, part in enumerate(CHADWICK_PARTS):
@@ -248,7 +262,11 @@ class PlayerIdResolver:
         logger.info("Built mapping from bundled JSON: %d players", len(self._by_mlbam))
 
     def _resolve_mlbam(
-        self, mlbam: int | None, fangraphs: int | None, bref: str | None, retrosheet: str | None,
+        self,
+        mlbam: int | None,
+        fangraphs: int | None,
+        bref: str | None,
+        retrosheet: str | None,
     ) -> int | None:
         if mlbam is not None and mlbam in self._by_mlbam:
             return mlbam

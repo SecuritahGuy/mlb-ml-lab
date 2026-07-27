@@ -255,9 +255,7 @@ def main(argv: list[str] | None = None) -> None:
     feature_index = _build_feature_index(feature_matrix)
     print(f"       Index built ({len(feature_index)} unique (player, game) pairs)")
     print("       Sampling mispredictions...")
-    samples = sample_mispredictions(
-        predictions, feature_index, n_samples=N_SAMPLES
-    )
+    samples = sample_mispredictions(predictions, feature_index, n_samples=N_SAMPLES)
     print(f"       {len(samples)} cases selected")
 
     print(f"[5/5] Calling {args.provider} (model={model_name})...")

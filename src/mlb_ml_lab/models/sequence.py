@@ -28,8 +28,15 @@ except ImportError:  # pragma: no cover
 SEQUENCE_LEN = 15
 
 STAT_FEATURES = [
-    "at_bats", "hits", "walks", "strikeouts",
-    "doubles", "triples", "home_runs", "runs", "rbi",
+    "at_bats",
+    "hits",
+    "walks",
+    "strikeouts",
+    "doubles",
+    "triples",
+    "home_runs",
+    "runs",
+    "rbi",
 ]
 
 N_STATS = len(STAT_FEATURES) + 1  # stats + is_home
@@ -87,7 +94,9 @@ def _train_mlx_model(
     steps_per_epoch = max(1, n_samples // batch_size)
     total_steps = epochs * steps_per_epoch
 
-    lr_schedule = optim.cosine_decay(learning_rate, total_steps, end=learning_rate * 0.01)
+    lr_schedule = optim.cosine_decay(
+        learning_rate, total_steps, end=learning_rate * 0.01
+    )
     optimizer = optim.Adam(learning_rate=lr_schedule)
 
     loss_fn = loss_fn_builder(model, y_arrays, l2_reg)
@@ -215,7 +224,8 @@ def _build_context_columns(feature_matrix: list[dict[str, Any]]) -> list[str]:
         if sample_cols is None:
             sample_cols = set(fr.keys()) - _excluded
         sample_cols = {
-            k for k in sample_cols
+            k
+            for k in sample_cols
             if k in fr and isinstance(fr.get(k), (_numeric_types, type(None)))
         }
     return sorted(sample_cols) if sample_cols else []
@@ -243,7 +253,9 @@ def _build_hybrid_sequences(
     grouped: dict[tuple[int, str], list[tuple[int, Any]]] = defaultdict(list)
     for i, log in enumerate(game_logs):
         pid = log.player_id if hasattr(log, "player_id") else log["player_id"]
-        season = str(log.season) if hasattr(log, "season") else str(log.get("season", ""))
+        season = (
+            str(log.season) if hasattr(log, "season") else str(log.get("season", ""))
+        )
         grouped[(pid, season)].append((i, log))
 
     seq_list: list[np.ndarray] = []
@@ -304,14 +316,28 @@ def build_hybrid_sequences(
     feat_mean: np.ndarray | None = None,
     feat_std: np.ndarray | None = None,
     target_col: str = "target_0.5",
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray
+]:
     result = _build_hybrid_sequences(
-        game_logs, feature_matrix, targets, seq_len,
-        stats_mean, stats_std, feat_mean, feat_std,
+        game_logs,
+        feature_matrix,
+        targets,
+        seq_len,
+        stats_mean,
+        stats_std,
+        feat_mean,
+        feat_std,
         target_cols=[target_col],
     )
     X_seq, X_ctx, y, stats_mean, stats_std, feat_mean, feat_std = (
-        result[0], result[1], result[2], result[-4], result[-3], result[-2], result[-1],
+        result[0],
+        result[1],
+        result[2],
+        result[-4],
+        result[-3],
+        result[-2],
+        result[-1],
     )
     return X_seq, X_ctx, y, stats_mean, stats_std, feat_mean, feat_std
 
@@ -326,17 +352,35 @@ def build_hybrid_mt_sequences(
     feat_mean: np.ndarray | None = None,
     feat_std: np.ndarray | None = None,
 ) -> tuple[
-    np.ndarray, np.ndarray, np.ndarray, np.ndarray,
-    np.ndarray, np.ndarray, np.ndarray, np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
 ]:
     result = _build_hybrid_sequences(
-        game_logs, feature_matrix, targets, seq_len,
-        stats_mean, stats_std, feat_mean, feat_std,
+        game_logs,
+        feature_matrix,
+        targets,
+        seq_len,
+        stats_mean,
+        stats_std,
+        feat_mean,
+        feat_std,
         target_cols=["target_0.5", "target_1.5"],
     )
     return (
-        result[0], result[1], result[2], result[3],
-        result[-4], result[-3], result[-2], result[-1],
+        result[0],
+        result[1],
+        result[2],
+        result[3],
+        result[-4],
+        result[-3],
+        result[-2],
+        result[-1],
     )
 
 
@@ -397,61 +441,98 @@ def _hybrid_loss(model, y_arrays, l2_reg):
 
 
 def train_hybrid_model(
-    X_seq: np.ndarray, X_ctx: np.ndarray, y: np.ndarray,
-    hidden_dim: int = 64, n_layers: int = 2, dropout: float = 0.3,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
+    y: np.ndarray,
+    hidden_dim: int = 64,
+    n_layers: int = 2,
+    dropout: float = 0.3,
     use_gating: bool = False,
-    learning_rate: float = 1e-3, epochs: int = 50, batch_size: int = 2048,
-    early_stop_patience: int = 8, l2_reg: float = 1e-5, seed: int = 42,
+    learning_rate: float = 1e-3,
+    epochs: int = 50,
+    batch_size: int = 2048,
+    early_stop_patience: int = 8,
+    l2_reg: float = 1e-5,
+    seed: int = 42,
     verbose: bool = True,
 ) -> tuple[HybridHitPredictor, dict[str, Any]]:
     model = HybridHitPredictor(
-        n_stats=X_seq.shape[2], n_context=X_ctx.shape[1],
-        hidden_dim=hidden_dim, n_layers=n_layers,
-        dropout=dropout, use_gating=use_gating,
+        n_stats=X_seq.shape[2],
+        n_context=X_ctx.shape[1],
+        hidden_dim=hidden_dim,
+        n_layers=n_layers,
+        dropout=dropout,
+        use_gating=use_gating,
     )
     meta = _train_mlx_model(
-        model, [X_seq, X_ctx], [y],
+        model,
+        [X_seq, X_ctx],
+        [y],
         loss_fn_builder=_hybrid_loss,
-        learning_rate=learning_rate, epochs=epochs, batch_size=batch_size,
-        early_stop_patience=early_stop_patience, l2_reg=l2_reg, seed=seed,
+        learning_rate=learning_rate,
+        epochs=epochs,
+        batch_size=batch_size,
+        early_stop_patience=early_stop_patience,
+        l2_reg=l2_reg,
+        seed=seed,
         verbose=verbose,
     )
-    meta.update({
-        "arch": "HybridHitPredictor",
-        "n_stats": X_seq.shape[2],
-        "n_context": X_ctx.shape[1],
-        "hidden_dim": hidden_dim,
-        "n_layers": n_layers,
-        "dropout": dropout,
-    })
+    meta.update(
+        {
+            "arch": "HybridHitPredictor",
+            "n_stats": X_seq.shape[2],
+            "n_context": X_ctx.shape[1],
+            "hidden_dim": hidden_dim,
+            "n_layers": n_layers,
+            "dropout": dropout,
+        }
+    )
     return model, meta
 
 
 def predict_hybrid_model(
-    model: HybridHitPredictor, X_seq: np.ndarray, X_ctx: np.ndarray,
+    model: HybridHitPredictor,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
 ) -> np.ndarray:
     return _predict_mlx_model(model, [X_seq, X_ctx], n_outputs=1)[0]
 
 
 def save_hybrid_model(
-    model: HybridHitPredictor, directory: str,
-    stats_mean: np.ndarray | None, stats_std: np.ndarray | None,
-    feat_mean: np.ndarray | None, feat_std: np.ndarray | None,
+    model: HybridHitPredictor,
+    directory: str,
+    stats_mean: np.ndarray | None,
+    stats_std: np.ndarray | None,
+    feat_mean: np.ndarray | None,
+    feat_std: np.ndarray | None,
     metadata: dict[str, Any] | None = None,
 ) -> str:
-    config = {"arch": "HybridHitPredictor", "n_stats": N_STATS,
-              "hidden_dim": model.gru.hidden_size, "dropout": 0.3}
+    config = {
+        "arch": "HybridHitPredictor",
+        "n_stats": N_STATS,
+        "hidden_dim": model.gru.hidden_size,
+        "dropout": 0.3,
+    }
     if metadata:
         config.update(metadata)
-    return _save_model(model, directory,
-                       {"stats_mean": stats_mean, "stats_std": stats_std,
-                        "feat_mean": feat_mean, "feat_std": feat_std},
-                       config)
+    return _save_model(
+        model,
+        directory,
+        {
+            "stats_mean": stats_mean,
+            "stats_std": stats_std,
+            "feat_mean": feat_mean,
+            "feat_std": feat_std,
+        },
+        config,
+    )
 
 
 def load_hybrid_model(
     directory: str,
-) -> tuple[HybridHitPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+) -> tuple[
+    HybridHitPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]
+]:
     with open(os.path.join(directory, "config.json"), encoding="utf-8") as f:
         config = json.load(f)
     model = HybridHitPredictor(
@@ -463,7 +544,14 @@ def load_hybrid_model(
     )
     model.load_weights(os.path.join(directory, "model.safetensors"), strict=False)
     arrs = _load_model_arrays(directory)
-    return model, arrs["stats_mean"], arrs["stats_std"], arrs["feat_mean"], arrs["feat_std"], config
+    return (
+        model,
+        arrs["stats_mean"],
+        arrs["stats_std"],
+        arrs["feat_mean"],
+        arrs["feat_std"],
+        config,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -485,12 +573,15 @@ class MultiTaskHybridPredictor(_NNModuleBase):
         self.gru = nn.GRU(n_stats, hidden_dim, n_layers)
         if context_depth >= 2:
             self.context_net = nn.Sequential(
-                nn.Linear(n_context, hidden_dim * 2), nn.ReLU(),
-                nn.Linear(hidden_dim * 2, hidden_dim), nn.ReLU(),
+                nn.Linear(n_context, hidden_dim * 2),
+                nn.ReLU(),
+                nn.Linear(hidden_dim * 2, hidden_dim),
+                nn.ReLU(),
             )
         else:
             self.context_net = nn.Sequential(
-                nn.Linear(n_context, hidden_dim), nn.ReLU(),
+                nn.Linear(n_context, hidden_dim),
+                nn.ReLU(),
             )
         self.dropout = nn.Dropout(dropout)
         self.head_05 = nn.Linear(hidden_dim * 2, 1)
@@ -512,8 +603,12 @@ def _mt_loss(model, y_arrays, l2_reg):
 
     def loss_fn(xs, xc, y05b, y15b):
         logits_05, logits_15 = model(xs, xc)
-        l05 = nn.losses.binary_cross_entropy(logits_05, y05b) * mx.where(y05b > 0.5, pw_05, 1.0)
-        l15 = nn.losses.binary_cross_entropy(logits_15, y15b) * mx.where(y15b > 0.5, pw_15, 1.0)
+        l05 = nn.losses.binary_cross_entropy(logits_05, y05b) * mx.where(
+            y05b > 0.5, pw_05, 1.0
+        )
+        l15 = nn.losses.binary_cross_entropy(logits_15, y15b) * mx.where(
+            y15b > 0.5, pw_15, 1.0
+        )
         base = l05.mean() + l15.mean()
         l2 = sum((p * p).sum() for _, p in tree_flatten(model.parameters()))
         return base + l2_reg * l2
@@ -522,63 +617,104 @@ def _mt_loss(model, y_arrays, l2_reg):
 
 
 def train_multi_task_model(
-    X_seq: np.ndarray, X_ctx: np.ndarray, y_05: np.ndarray, y_15: np.ndarray,
-    hidden_dim: int = 64, n_layers: int = 2, dropout: float = 0.3,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
+    y_05: np.ndarray,
+    y_15: np.ndarray,
+    hidden_dim: int = 64,
+    n_layers: int = 2,
+    dropout: float = 0.3,
     context_depth: int = 1,
-    learning_rate: float = 1e-3, epochs: int = 50, batch_size: int = 256,
-    early_stop_patience: int = 8, l2_reg: float = 1e-5, seed: int = 42,
+    learning_rate: float = 1e-3,
+    epochs: int = 50,
+    batch_size: int = 256,
+    early_stop_patience: int = 8,
+    l2_reg: float = 1e-5,
+    seed: int = 42,
     verbose: bool = True,
 ) -> tuple[MultiTaskHybridPredictor, dict[str, Any]]:
     model = MultiTaskHybridPredictor(
-        n_stats=X_seq.shape[2], n_context=X_ctx.shape[1],
-        hidden_dim=hidden_dim, n_layers=n_layers,
-        dropout=dropout, context_depth=context_depth,
+        n_stats=X_seq.shape[2],
+        n_context=X_ctx.shape[1],
+        hidden_dim=hidden_dim,
+        n_layers=n_layers,
+        dropout=dropout,
+        context_depth=context_depth,
     )
     meta = _train_mlx_model(
-        model, [X_seq, X_ctx], [y_05, y_15],
+        model,
+        [X_seq, X_ctx],
+        [y_05, y_15],
         loss_fn_builder=_mt_loss,
-        learning_rate=learning_rate, epochs=epochs, batch_size=batch_size,
-        early_stop_patience=early_stop_patience, l2_reg=l2_reg, seed=seed,
+        learning_rate=learning_rate,
+        epochs=epochs,
+        batch_size=batch_size,
+        early_stop_patience=early_stop_patience,
+        l2_reg=l2_reg,
+        seed=seed,
         verbose=verbose,
     )
-    meta.update({
-        "arch": "MultiTaskHybridPredictor",
-        "n_stats": X_seq.shape[2], "n_context": X_ctx.shape[1],
-        "hidden_dim": hidden_dim, "n_layers": n_layers, "dropout": dropout,
-        "context_depth": context_depth,
-    })
+    meta.update(
+        {
+            "arch": "MultiTaskHybridPredictor",
+            "n_stats": X_seq.shape[2],
+            "n_context": X_ctx.shape[1],
+            "hidden_dim": hidden_dim,
+            "n_layers": n_layers,
+            "dropout": dropout,
+            "context_depth": context_depth,
+        }
+    )
     return model, meta
 
 
 def predict_multi_task_model(
-    model: MultiTaskHybridPredictor, X_seq: np.ndarray, X_ctx: np.ndarray,
+    model: MultiTaskHybridPredictor,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    return tuple(
-        _predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2)
-    )  # type: ignore[return-value]
+    return tuple(_predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2))  # type: ignore[return-value]
 
 
 def save_multi_task_model(
-    model: MultiTaskHybridPredictor, directory: str,
-    stats_mean: np.ndarray | None, stats_std: np.ndarray | None,
-    feat_mean: np.ndarray | None, feat_std: np.ndarray | None,
+    model: MultiTaskHybridPredictor,
+    directory: str,
+    stats_mean: np.ndarray | None,
+    stats_std: np.ndarray | None,
+    feat_mean: np.ndarray | None,
+    feat_std: np.ndarray | None,
     metadata: dict[str, Any] | None = None,
 ) -> str:
-    config = {"arch": "MultiTaskHybridPredictor", "n_stats": N_STATS,
-              "hidden_dim": model.gru.hidden_size, "dropout": 0.3}
+    config = {
+        "arch": "MultiTaskHybridPredictor",
+        "n_stats": N_STATS,
+        "hidden_dim": model.gru.hidden_size,
+        "dropout": 0.3,
+    }
     if metadata:
         config.update(metadata)
-    return _save_model(model, directory,
-                       {"stats_mean": stats_mean, "stats_std": stats_std,
-                        "feat_mean": feat_mean, "feat_std": feat_std},
-                       config)
+    return _save_model(
+        model,
+        directory,
+        {
+            "stats_mean": stats_mean,
+            "stats_std": stats_std,
+            "feat_mean": feat_mean,
+            "feat_std": feat_std,
+        },
+        config,
+    )
 
 
 def load_multi_task_model(
     directory: str,
 ) -> tuple[
-    MultiTaskHybridPredictor, np.ndarray, np.ndarray,
-    np.ndarray, np.ndarray, dict[str, Any],
+    MultiTaskHybridPredictor,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict[str, Any],
 ]:
     with open(os.path.join(directory, "config.json"), encoding="utf-8") as f:
         config = json.load(f)
@@ -592,7 +728,14 @@ def load_multi_task_model(
     )
     model.load_weights(os.path.join(directory, "model.safetensors"), strict=False)
     arrs = _load_model_arrays(directory)
-    return model, arrs["stats_mean"], arrs["stats_std"], arrs["feat_mean"], arrs["feat_std"], config
+    return (
+        model,
+        arrs["stats_mean"],
+        arrs["stats_std"],
+        arrs["feat_mean"],
+        arrs["feat_std"],
+        config,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -645,61 +788,108 @@ class DCNMultiTaskPredictor(_NNModuleBase):
 
 
 def train_dcn_multi_task_model(
-    X_seq: np.ndarray, X_ctx: np.ndarray, y_05: np.ndarray, y_15: np.ndarray,
-    hidden_dim: int = 64, n_layers: int = 2, dropout: float = 0.3,
-    cross_dim: int = 32, num_cross_layers: int = 2,
-    learning_rate: float = 1e-3, epochs: int = 50, batch_size: int = 256,
-    early_stop_patience: int = 8, l2_reg: float = 1e-5, seed: int = 42,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
+    y_05: np.ndarray,
+    y_15: np.ndarray,
+    hidden_dim: int = 64,
+    n_layers: int = 2,
+    dropout: float = 0.3,
+    cross_dim: int = 32,
+    num_cross_layers: int = 2,
+    learning_rate: float = 1e-3,
+    epochs: int = 50,
+    batch_size: int = 256,
+    early_stop_patience: int = 8,
+    l2_reg: float = 1e-5,
+    seed: int = 42,
     verbose: bool = True,
 ) -> tuple[DCNMultiTaskPredictor, dict[str, Any]]:
     model = DCNMultiTaskPredictor(
-        n_stats=X_seq.shape[2], n_context=X_ctx.shape[1],
-        hidden_dim=hidden_dim, n_layers=n_layers, dropout=dropout,
-        cross_dim=cross_dim, num_cross_layers=num_cross_layers,
+        n_stats=X_seq.shape[2],
+        n_context=X_ctx.shape[1],
+        hidden_dim=hidden_dim,
+        n_layers=n_layers,
+        dropout=dropout,
+        cross_dim=cross_dim,
+        num_cross_layers=num_cross_layers,
     )
     meta = _train_mlx_model(
-        model, [X_seq, X_ctx], [y_05, y_15],
+        model,
+        [X_seq, X_ctx],
+        [y_05, y_15],
         loss_fn_builder=_mt_loss,
-        learning_rate=learning_rate, epochs=epochs, batch_size=batch_size,
-        early_stop_patience=early_stop_patience, l2_reg=l2_reg, seed=seed,
+        learning_rate=learning_rate,
+        epochs=epochs,
+        batch_size=batch_size,
+        early_stop_patience=early_stop_patience,
+        l2_reg=l2_reg,
+        seed=seed,
         verbose=verbose,
     )
-    meta.update({
-        "arch": "DCNMultiTaskPredictor",
-        "n_stats": X_seq.shape[2], "n_context": X_ctx.shape[1],
-        "hidden_dim": hidden_dim, "n_layers": n_layers, "dropout": dropout,
-        "cross_dim": cross_dim, "num_cross_layers": num_cross_layers,
-    })
+    meta.update(
+        {
+            "arch": "DCNMultiTaskPredictor",
+            "n_stats": X_seq.shape[2],
+            "n_context": X_ctx.shape[1],
+            "hidden_dim": hidden_dim,
+            "n_layers": n_layers,
+            "dropout": dropout,
+            "cross_dim": cross_dim,
+            "num_cross_layers": num_cross_layers,
+        }
+    )
     return model, meta
 
 
 def predict_dcn_multi_task_model(
-    model: DCNMultiTaskPredictor, X_seq: np.ndarray, X_ctx: np.ndarray,
+    model: DCNMultiTaskPredictor,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    return tuple(
-        _predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2)
-    )  # type: ignore[return-value]
+    return tuple(_predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2))  # type: ignore[return-value]
 
 
 def save_dcn_model(
-    model: DCNMultiTaskPredictor, directory: str,
-    stats_mean: np.ndarray | None, stats_std: np.ndarray | None,
-    feat_mean: np.ndarray | None, feat_std: np.ndarray | None,
+    model: DCNMultiTaskPredictor,
+    directory: str,
+    stats_mean: np.ndarray | None,
+    stats_std: np.ndarray | None,
+    feat_mean: np.ndarray | None,
+    feat_std: np.ndarray | None,
     metadata: dict[str, Any] | None = None,
 ) -> str:
-    config = {"arch": "DCNMultiTaskPredictor", "n_stats": N_STATS,
-              "hidden_dim": model.gru.hidden_size, "dropout": 0.3}
+    config = {
+        "arch": "DCNMultiTaskPredictor",
+        "n_stats": N_STATS,
+        "hidden_dim": model.gru.hidden_size,
+        "dropout": 0.3,
+    }
     if metadata:
         config.update(metadata)
-    return _save_model(model, directory,
-                       {"stats_mean": stats_mean, "stats_std": stats_std,
-                        "feat_mean": feat_mean, "feat_std": feat_std},
-                       config)
+    return _save_model(
+        model,
+        directory,
+        {
+            "stats_mean": stats_mean,
+            "stats_std": stats_std,
+            "feat_mean": feat_mean,
+            "feat_std": feat_std,
+        },
+        config,
+    )
 
 
 def load_dcn_model(
     directory: str,
-) -> tuple[DCNMultiTaskPredictor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+) -> tuple[
+    DCNMultiTaskPredictor,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict[str, Any],
+]:
     with open(os.path.join(directory, "config.json"), encoding="utf-8") as f:
         config = json.load(f)
     model = DCNMultiTaskPredictor(
@@ -713,7 +903,14 @@ def load_dcn_model(
     )
     model.load_weights(os.path.join(directory, "model.safetensors"), strict=False)
     arrs = _load_model_arrays(directory)
-    return model, arrs["stats_mean"], arrs["stats_std"], arrs["feat_mean"], arrs["feat_std"], config
+    return (
+        model,
+        arrs["stats_mean"],
+        arrs["stats_std"],
+        arrs["feat_mean"],
+        arrs["feat_std"],
+        config,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -747,10 +944,15 @@ class TransformerEncoder(_NNModuleBase):
         for i in range(num_layers):
             setattr(self, f"attn_{i}", nn.MultiHeadAttention(d_model, nhead))
             setattr(self, f"norm1_{i}", nn.LayerNorm(d_model))
-            setattr(self, f"ffn_{i}", nn.Sequential(
-                nn.Linear(d_model, d_model * 2), nn.ReLU(),
-                nn.Linear(d_model * 2, d_model),
-            ))
+            setattr(
+                self,
+                f"ffn_{i}",
+                nn.Sequential(
+                    nn.Linear(d_model, d_model * 2),
+                    nn.ReLU(),
+                    nn.Linear(d_model * 2, d_model),
+                ),
+            )
             setattr(self, f"norm2_{i}", nn.LayerNorm(d_model))
 
     def __call__(self, x: mx.array) -> mx.array:
@@ -783,11 +985,15 @@ class TransformerMultiTaskPredictor(_NNModuleBase):
     ):
         super().__init__()
         self.transformer = TransformerEncoder(
-            n_stats=n_stats, d_model=d_model,
-            nhead=nhead, num_layers=num_layers, dropout=dropout,
+            n_stats=n_stats,
+            d_model=d_model,
+            nhead=nhead,
+            num_layers=num_layers,
+            dropout=dropout,
         )
         self.context_net = nn.Sequential(
-            nn.Linear(n_context, d_model), nn.ReLU(),
+            nn.Linear(n_context, d_model),
+            nn.ReLU(),
         )
         self.dropout = nn.Dropout(dropout)
         self.head_05 = nn.Linear(d_model * 2, 1)
@@ -802,61 +1008,104 @@ class TransformerMultiTaskPredictor(_NNModuleBase):
 
 
 def train_transformer_multi_task_model(
-    X_seq: np.ndarray, X_ctx: np.ndarray, y_05: np.ndarray, y_15: np.ndarray,
-    d_model: int = 32, nhead: int = 4, num_layers: int = 2, dropout: float = 0.3,
-    learning_rate: float = 1e-3, epochs: int = 50, batch_size: int = 256,
-    early_stop_patience: int = 8, l2_reg: float = 1e-5, seed: int = 42,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
+    y_05: np.ndarray,
+    y_15: np.ndarray,
+    d_model: int = 32,
+    nhead: int = 4,
+    num_layers: int = 2,
+    dropout: float = 0.3,
+    learning_rate: float = 1e-3,
+    epochs: int = 50,
+    batch_size: int = 256,
+    early_stop_patience: int = 8,
+    l2_reg: float = 1e-5,
+    seed: int = 42,
     verbose: bool = True,
 ) -> tuple[TransformerMultiTaskPredictor, dict[str, Any]]:
     model = TransformerMultiTaskPredictor(
-        n_stats=X_seq.shape[2], n_context=X_ctx.shape[1],
-        d_model=d_model, nhead=nhead, num_layers=num_layers, dropout=dropout,
+        n_stats=X_seq.shape[2],
+        n_context=X_ctx.shape[1],
+        d_model=d_model,
+        nhead=nhead,
+        num_layers=num_layers,
+        dropout=dropout,
     )
     meta = _train_mlx_model(
-        model, [X_seq, X_ctx], [y_05, y_15],
+        model,
+        [X_seq, X_ctx],
+        [y_05, y_15],
         loss_fn_builder=_mt_loss,
-        learning_rate=learning_rate, epochs=epochs, batch_size=batch_size,
-        early_stop_patience=early_stop_patience, l2_reg=l2_reg, seed=seed,
+        learning_rate=learning_rate,
+        epochs=epochs,
+        batch_size=batch_size,
+        early_stop_patience=early_stop_patience,
+        l2_reg=l2_reg,
+        seed=seed,
         verbose=verbose,
     )
-    meta.update({
-        "arch": "TransformerMultiTaskPredictor",
-        "n_stats": X_seq.shape[2], "n_context": X_ctx.shape[1],
-        "d_model": d_model, "nhead": nhead,
-        "num_layers": num_layers, "dropout": dropout,
-    })
+    meta.update(
+        {
+            "arch": "TransformerMultiTaskPredictor",
+            "n_stats": X_seq.shape[2],
+            "n_context": X_ctx.shape[1],
+            "d_model": d_model,
+            "nhead": nhead,
+            "num_layers": num_layers,
+            "dropout": dropout,
+        }
+    )
     return model, meta
 
 
 def predict_transformer_multi_task_model(
-    model: TransformerMultiTaskPredictor, X_seq: np.ndarray, X_ctx: np.ndarray,
+    model: TransformerMultiTaskPredictor,
+    X_seq: np.ndarray,
+    X_ctx: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    return tuple(
-        _predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2)
-    )  # type: ignore[return-value]
+    return tuple(_predict_mlx_model(model, [X_seq, X_ctx], n_outputs=2))  # type: ignore[return-value]
 
 
 def save_transformer_model(
-    model: TransformerMultiTaskPredictor, directory: str,
-    stats_mean: np.ndarray | None, stats_std: np.ndarray | None,
-    feat_mean: np.ndarray | None, feat_std: np.ndarray | None,
+    model: TransformerMultiTaskPredictor,
+    directory: str,
+    stats_mean: np.ndarray | None,
+    stats_std: np.ndarray | None,
+    feat_mean: np.ndarray | None,
+    feat_std: np.ndarray | None,
     metadata: dict[str, Any] | None = None,
 ) -> str:
-    config = {"arch": "TransformerMultiTaskPredictor", "n_stats": N_STATS,
-              "d_model": model.transformer.input_proj.out_features, "dropout": 0.3}
+    config = {
+        "arch": "TransformerMultiTaskPredictor",
+        "n_stats": N_STATS,
+        "d_model": model.transformer.input_proj.out_features,
+        "dropout": 0.3,
+    }
     if metadata:
         config.update(metadata)
-    return _save_model(model, directory,
-                       {"stats_mean": stats_mean, "stats_std": stats_std,
-                        "feat_mean": feat_mean, "feat_std": feat_std},
-                       config)
+    return _save_model(
+        model,
+        directory,
+        {
+            "stats_mean": stats_mean,
+            "stats_std": stats_std,
+            "feat_mean": feat_mean,
+            "feat_std": feat_std,
+        },
+        config,
+    )
 
 
 def load_transformer_model(
     directory: str,
 ) -> tuple[
-    TransformerMultiTaskPredictor, np.ndarray, np.ndarray,
-    np.ndarray, np.ndarray, dict[str, Any],
+    TransformerMultiTaskPredictor,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    dict[str, Any],
 ]:
     with open(os.path.join(directory, "config.json"), encoding="utf-8") as f:
         config = json.load(f)
@@ -870,4 +1119,11 @@ def load_transformer_model(
     )
     model.load_weights(os.path.join(directory, "model.safetensors"), strict=False)
     arrs = _load_model_arrays(directory)
-    return model, arrs["stats_mean"], arrs["stats_std"], arrs["feat_mean"], arrs["feat_std"], config
+    return (
+        model,
+        arrs["stats_mean"],
+        arrs["stats_std"],
+        arrs["feat_mean"],
+        arrs["feat_std"],
+        config,
+    )

@@ -454,9 +454,7 @@ class MlbClient:
         data = self._get(f"/people/{player_id}/awards")
         return data.get("awards", [])
 
-    def get_attendance(
-        self, season: int, team_id: int | None = None
-    ) -> dict[str, Any]:
+    def get_attendance(self, season: int, team_id: int | None = None) -> dict[str, Any]:
         """Fetch attendance data for a season.
 
         Args:
@@ -1035,9 +1033,7 @@ class MlbClient:
         Returns:
             List of player dicts (same shape as ``get_player``).
         """
-        params: dict[str, Any] = {
-            "personIds": ",".join(str(pid) for pid in person_ids)
-        }
+        params: dict[str, Any] = {"personIds": ",".join(str(pid) for pid in person_ids)}
         if season is not None:
             params["season"] = season
         data = self._get("/people", params=params)

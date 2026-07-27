@@ -96,17 +96,20 @@ def run_regime(
             random_state=SEED,
         )
         model.fit(
-            x_all[train_idx], y_all[train_idx],
+            x_all[train_idx],
+            y_all[train_idx],
             feature_names=feat_cols,
         )
         probas = model.predict_proba(x_all[test_idx])[:, 1]
         for idx, prob in zip(test_idx, probas.tolist()):
-            preds.append({
-                "prob": round(float(prob), 4),
-                "actual": int(y_all[idx]),
-                "in_hot_regime": bool(regime_mask[idx]),
-                "fold": fold_idx,
-            })
+            preds.append(
+                {
+                    "prob": round(float(prob), 4),
+                    "actual": int(y_all[idx]),
+                    "in_hot_regime": bool(regime_mask[idx]),
+                    "fold": fold_idx,
+                }
+            )
     return preds
 
 
@@ -128,11 +131,13 @@ def run_baseline(
         model.fit(x_all[train_idx], y_all[train_idx])
         probas = model.predict_proba(x_all[test_idx])[:, 1]
         for idx, prob in zip(test_idx, probas.tolist()):
-            preds.append({
-                "prob": round(float(prob), 4),
-                "actual": int(y_all[idx]),
-                "fold": fold_idx,
-            })
+            preds.append(
+                {
+                    "prob": round(float(prob), 4),
+                    "actual": int(y_all[idx]),
+                    "fold": fold_idx,
+                }
+            )
     return preds
 
 
@@ -152,9 +157,7 @@ def main() -> None:
         print("ERROR: hit_rate_last_10 feature not available. Aborting.")
         return
 
-    regime_values = np.array([
-        float(r.get("hit_rate_last_10", 0) or 0) for r in merged
-    ])
+    regime_values = np.array([float(r.get("hit_rate_last_10", 0) or 0) for r in merged])
     hot_pct = (regime_values >= 0.4).mean() * 100
     cold_pct = (regime_values < 0.4).mean() * 100
     print(f"  Hot  (hit_rate >= 0.4): {hot_pct:.1f}% of samples")
@@ -212,11 +215,13 @@ def main() -> None:
                     f"win={r['win_rate']:.3f}, ROI={r['roi']:+.1f}%"
                 )
 
-        results.append({
-            "threshold": thresh,
-            "auc": round(auc, 4),
-            "label": label,
-        })
+        results.append(
+            {
+                "threshold": thresh,
+                "auc": round(auc, 4),
+                "label": label,
+            }
+        )
         print()
 
     # ── Summary ────────────────────────────────────────────────────
@@ -224,7 +229,7 @@ def main() -> None:
     print("  SUMMARY")
     print("=" * 55)
     print(f"  {'Model':<30} {'AUC':>6}")
-    print(f"  {'-'*30} {'-'*6}")
+    print(f"  {'-' * 30} {'-' * 6}")
     print(f"  {'Baseline XGB':<30} {base_auc:>6.4f}")
     for r in results:
         print(f"  {r['label']:<30} {r['auc']:>6.4f}")

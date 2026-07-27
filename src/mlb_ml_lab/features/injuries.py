@@ -66,16 +66,12 @@ def _status_at_date(
     return ((game_date - event_date_obj).days, None)
 
 
-def _days_on_il(
-    timeline: list[tuple[str, str]], date_str: str
-) -> int | None:
+def _days_on_il(timeline: list[tuple[str, str]], date_str: str) -> int | None:
     result = _status_at_date(timeline, date_str)
     return result[1]  # days_on_il
 
 
-def _days_since_il(
-    timeline: list[tuple[str, str]], date_str: str
-) -> int | None:
+def _days_since_il(timeline: list[tuple[str, str]], date_str: str) -> int | None:
     result = _status_at_date(timeline, date_str)
     return result[0]  # days_since_il_deactivation
 
@@ -125,7 +121,11 @@ class InjuryFeatures(FeatureExtractor):
         rows: list[dict[str, Any]] = []
         for log in game_logs:
             pid = log.player_id
-            date_str = log.date.isoformat() if hasattr(log.date, "isoformat") else str(log.date)
+            date_str = (
+                log.date.isoformat()
+                if hasattr(log.date, "isoformat")
+                else str(log.date)
+            )
             tl = timelines.get(pid, [])
             d_il = _days_on_il(tl, date_str)
             d_since = _days_since_il(tl, date_str)

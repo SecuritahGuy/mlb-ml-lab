@@ -22,9 +22,7 @@ _BASE_FACTORIES: dict[str, Any] = {
     "xgb": lambda rs, nj, **kw: XGBClassifier(
         random_state=rs, n_jobs=nj, eval_metric="logloss", verbosity=0, **kw
     ),
-    "rf": lambda rs, nj, **kw: RandomForestClassifier(
-        random_state=rs, n_jobs=nj, **kw
-    ),
+    "rf": lambda rs, nj, **kw: RandomForestClassifier(random_state=rs, n_jobs=nj, **kw),
 }
 
 
@@ -101,12 +99,8 @@ class RegimeSwitchingClassifier(BaseEstimator, ClassifierMixin):
         regime = X[:, col_idx] >= self.threshold
         self._col_idx = col_idx
 
-        self.high_model_ = factory(
-            self.random_state, self.n_jobs, **self.base_params
-        )
-        self.low_model_ = factory(
-            self.random_state, self.n_jobs, **self.base_params
-        )
+        self.high_model_ = factory(self.random_state, self.n_jobs, **self.base_params)
+        self.low_model_ = factory(self.random_state, self.n_jobs, **self.base_params)
         self.high_model_.fit(X[regime], y[regime])
         self.low_model_.fit(X[~regime], y[~regime])
 

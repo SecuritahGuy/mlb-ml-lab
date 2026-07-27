@@ -50,7 +50,9 @@ class UmpireFeatures(FeatureExtractor):
                     "game_pk": log.game_pk,
                     "date": log.date,
                     "hp_umpire_id": ump_id,
-                    "umpire_game_count": (game_counts or {}).get(ump_id) if ump_id else None,
+                    "umpire_game_count": (game_counts or {}).get(ump_id)
+                    if ump_id
+                    else None,
                 }
             )
         return rows
